@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchUserProfile = async (authUser: SupabaseUser) => {
+  const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
     try {
       const { data, error } = await supabase
         .from('users')
@@ -36,12 +36,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single()
 
       if (error) {
-        console.error('Error fetching user profile:', error)
         if (error.code === 'PGRST116') {
           console.warn('User profile not found for auth user:', authUser.id)
           return null
         }
-        throw error
+        console.error('Error fetching user profile:', error)
+        return null
       }
 
       return data
@@ -78,62 +78,73 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    let mounted = true
+
+    const handleAuthStateChange = async (authUser: SupabaseUser | null) => {
+      if (!mounted) return
+
+      try {
+        if (authUser) {
+          setSupabaseUser(authUser)
+          const userProfile = await fetchUserProfile(authUser)
+          if (mounted) {
+            setUser(userProfile)
+          }
+        } else {
+          if (mounted) {
+            setSupabaseUser(null)
+            setUser(null)
+          }
+        }
+      } catch (error) {
+        console.error('Error in auth state change:', error)
+        if (mounted) {
+          setSupabaseUser(null)
+          setUser(null)
+        }
+      }
+    }
+
     const initializeAuth = async () => {
       try {
-        setLoading(true)
         // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
           console.error('Error getting session:', error)
-          setUser(null)
-          setSupabaseUser(null)
-          return
-        }
-        
-        if (session?.user) {
-          setSupabaseUser(session.user)
-          const userProfile = await fetchUserProfile(session.user)
-          setUser(userProfile)
-        } else {
-          setUser(null)
-          setSupabaseUser(null)
+        } else if (session?.user) {
+          await handleAuthStateChange(session.user)
         }
       } catch (error) {
         console.error('Error initializing auth:', error)
-        setUser(null)
-        setSupabaseUser(null)
       } finally {
-        setLoading(false)
+        if (mounted) {
+          setLoading(false)
+        }
       }
     }
 
-    // Listen for auth changes
+    // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state change:', event, session?.user?.email)
         
-        try {
-          if (session?.user) {
-            setSupabaseUser(session.user)
-            const userProfile = await fetchUserProfile(session.user)
-            setUser(userProfile)
-          } else {
-            setSupabaseUser(null)
-            setUser(null)
-          }
-        } catch (error) {
-          console.error('Error in auth state change:', error)
-          setSupabaseUser(null)
-          setUser(null)
+        if (event === 'INITIAL_SESSION') {
+          // Skip initial session as we handle it in initializeAuth
+          return
         }
+
+        await handleAuthStateChange(session?.user || null)
       }
     )
 
-    // Initialize auth after setting up the listener
+    // Initialize auth
     initializeAuth()
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   const signIn = async (email: string, password: string) => {
