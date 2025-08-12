@@ -98,11 +98,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (error) {
           console.error('Error getting session:', error)
+          if (mounted) {
+            dispatch(setLoading(false))
+          }
         } else if (session?.user) {
           await handleAuthStateChange(session.user)
+        } else {
+          // No session found, user is not authenticated
+          if (mounted) {
+            dispatch(setUser(null))
+            dispatch(setLoading(false))
+          }
         }
       } catch (error) {
         console.error('Error initializing auth:', error)
+        if (mounted) {
+          dispatch(setUser(null))
+          dispatch(setLoading(false))
+        }
       } finally {
         if (mounted) {
           dispatch(setLoading(false))
