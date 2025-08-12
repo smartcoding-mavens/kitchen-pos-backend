@@ -130,17 +130,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         console.log('Auth state change:', event, session?.user?.email)
         
-        if (event === 'INITIAL_SESSION') {
-          // Skip initial session as we handle it in initializeAuth
-          return
-        }
-
         await handleAuthStateChange(session?.user || null)
       }
     )
-
-    // Initialize auth
-    initializeAuth()
 
     return () => {
       mounted = false
