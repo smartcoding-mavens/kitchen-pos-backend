@@ -93,24 +93,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initializeAuth = async () => {
       try {
+        console.log('🔍 Initializing auth...')
         // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession()
+        
+        console.log('📋 Session data:', session)
+        console.log('❌ Session error:', error)
         
         if (error) {
           console.error('Error getting session:', error)
           if (mounted) {
+            console.log('⚠️ Setting loading to false due to session error')
             dispatch(setLoading(false))
           }
         } else if (session?.user) {
+          console.log('✅ Session found, handling auth state change for user:', session.user.email)
           await handleAuthStateChange(session.user)
         } else {
           // No session found, user is not authenticated
+          console.log('❌ No session found, setting user to null')
           if (mounted) {
             dispatch(setUser(null))
           }
         }
       } catch (error) {
         console.error('Error initializing auth:', error)
+        console.log('💥 Exception in initializeAuth, setting user to null')
         if (mounted) {
           dispatch(setUser(null))
         }
