@@ -31,24 +31,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
     try {
+      console.log('🔍 Fetching user profile for auth user:', authUser.id)
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('auth_user_id', authUser.id)
         .single()
 
+      console.log('📊 Query result - data:', data, 'error:', error)
+
       if (error) {
         if (error.code === 'PGRST116') {
-          console.warn('User profile not found for auth user:', authUser.id)
+          console.warn('❌ User profile not found for auth user:', authUser.id)
+          // Set loading to false even when profile not found
+          dispatch(setUser(null))
           return null
         }
-        console.error('Error fetching user profile:', error)
+        console.error('❌ Error fetching user profile:', error)
+        // Set loading to false on error
+        dispatch(setUser(null))
         return null
       }
 
+      console.log('✅ User profile fetched successfully:', data.email)
       return data
     } catch (error) {
-      console.error('Error fetching user profile:', error)
+      console.error('💥 Exception in fetchUserProfile:', error)
+      // Set loading to false on exception
+      dispatch(setUser(null))
       return null
     }
   }
