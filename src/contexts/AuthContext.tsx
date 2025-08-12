@@ -37,47 +37,94 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Error fetching user profile:', error)
+        // If user profile doesn't exist, sign out to prevent infinite loading
+        if (error.code === 'PGRST116') {
+          console.warn('User profile not found, signing out')
+          await supabase.auth.signOut()
+        }
         return null
       }
 
       return data
     } catch (error) {
       console.error('Error fetching user profile:', error)
+      // Sign out on unexpected errors to prevent infinite loading
+      await supabase.auth.signOut()
       return null
     }
   }
 
   const refreshUser = async () => {
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-    if (authUser) {
-      const userProfile = await fetchUserProfile(authUser)
-      setUser(userProfile)
-      setSupabaseUser(authUser)
+    try {
+      const { data: { user: authUser }, error } = await supabase.auth.getUser()
+      
+      if (error) {
+        console.error('Error getting auth user:', error)
+        setUser(null)
+        setSupabaseUser(null)
+        return
+      }
+      
+      if (authUser) {
+        const userProfile = await fetchUserProfile(authUser)
+        setUser(userProfile)
+        setSupabaseUser(authUser)
+      } else {
+        setUser(null)
+        setSupabaseUser(null)
+      }
+    } catch (error) {
+      console.error('Error refreshing user:', error)
+      setUser(null)
+      setSupabaseUser(null)
     }
   }
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setSupabaseUser(session.user)
-        fetchUserProfile(session.user).then(setUser)
-      }
-      setLoading(false)
-    })
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+    const initializeAuth = async () => {
+      try {
+        // Get initial session
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Error getting session:', error)
+          setLoading(false)
+          return
+        }
+        
         if (session?.user) {
           setSupabaseUser(session.user)
           const userProfile = await fetchUserProfile(session.user)
           setUser(userProfile)
-        } else {
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    initializeAuth()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        try {
+          if (session?.user) {
+            setSupabaseUser(session.user)
+            const userProfile = await fetchUserProfile(session.user)
+            setUser(userProfile)
+          } else {
+            setSupabaseUser(null)
+            setUser(null)
+          }
+        } catch (error) {
+          console.error('Error in auth state change:', error)
           setSupabaseUser(null)
           setUser(null)
+        } finally {
+          setLoading(false)
         }
-        setLoading(false)
       }
     )
 
