@@ -1,5 +1,18 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { 
+  fetchMenuCategories, 
+  fetchMenuItems, 
+  setRevenueCenters,
+  createMenuCategory,
+  updateMenuCategory,
+  deleteMenuCategory,
+  createMenuItem,
+  updateMenuItem,
+  deleteMenuItem,
+  clearError
+} from '../store/slices/menuSlice'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
 import {
@@ -44,10 +57,8 @@ interface MenuItem {
 
 export default function MenuManagement() {
   const { user } = useAuth()
-  const [categories, setCategories] = useState<MenuCategory[]>([])
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([])
-  const [revenueCenters, setRevenueCenters] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const dispatch = useAppDispatch()
+  const { categories, menuItems, revenueCenters, loading, error } = useAppSelector((state) => state.menu)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [showCategoryModal, setShowCategoryModal] = useState(false)
@@ -77,9 +88,15 @@ export default function MenuManagement() {
     }
   }, [user])
 
+  useEffect(() => {
+    if (error) {
+      toast.error(error)
+      dispatch(clearError())
+    }
+  }, [error, dispatch])
+
   const fetchData = async () => {
     try {
-      setLoading(true)
 
       // Fetch revenue centers
       const { data: centers, error: centersError } = await supabase
@@ -90,39 +107,13 @@ export default function MenuManagement() {
 
       if (centersError) throw centersError
 
-      // Fetch categories
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from('menu_categories')
-        .select(`
-          *,
-          revenue_centers (name, type)
-        `)
-        .eq('restaurant_id', user?.restaurant_id)
-        .order('sort_order')
-
-      if (categoriesError) throw categoriesError
-
-      // Fetch menu items
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('menu_items')
-        .select(`
-          *,
-          menu_categories (name)
-        `)
-        .eq('restaurant_id', user?.restaurant_id)
-        .order('sort_order')
-
-      if (itemsError) throw itemsError
-
-      setRevenueCenters(centers || [])
-      setCategories(categoriesData || [])
-      setMenuItems(itemsData || [])
+      dispatch(setRevenueCenters(centers || []))
+      dispatch(fetchMenuCategories(user?.restaurant_id!))
+      dispatch(fetchMenuItems(user?.restaurant_id!))
 
     } catch (error) {
       console.error('Error fetching menu data:', error)
       toast.error('Failed to load menu data')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -137,19 +128,10 @@ export default function MenuManagement() {
       }
 
       if (editingCategory) {
-        const { error } = await supabase
-          .from('menu_categories')
-          .update(categoryData)
-          .eq('id', editingCategory.id)
-
-        if (error) throw error
+        await dispatch(updateMenuCategory({ id: editingCategory.id, updates: categoryData })).unwrap()
         toast.success('Category updated successfully')
       } else {
-        const { error } = await supabase
-          .from('menu_categories')
-          .insert(categoryData)
-
-        if (error) throw error
+        await dispatch(createMenuCategory(categoryData)).unwrap()
         toast.success('Category created successfully')
       }
 
@@ -161,11 +143,9 @@ export default function MenuManagement() {
         revenue_center_id: '',
         sort_order: 0
       })
-      fetchData()
 
     } catch (error: any) {
       console.error('Error saving category:', error)
-      toast.error(error.message || 'Failed to save category')
     }
   }
 
@@ -181,19 +161,10 @@ export default function MenuManagement() {
       }
 
       if (editingItem) {
-        const { error } = await supabase
-          .from('menu_items')
-          .update(itemData)
-          .eq('id', editingItem.id)
-
-        if (error) throw error
+        await dispatch(updateMenuItem({ id: editingItem.id, updates: itemData })).unwrap()
         toast.success('Menu item updated successfully')
       } else {
-        const { error } = await supabase
-          .from('menu_items')
-          .insert(itemData)
-
-        if (error) throw error
+        await dispatch(createMenuItem(itemData)).unwrap()
         toast.success('Menu item created successfully')
       }
 
@@ -207,11 +178,9 @@ export default function MenuManagement() {
         preparation_time: '15',
         image_url: ''
       })
-      fetchData()
 
     } catch (error: any) {
       console.error('Error saving menu item:', error)
-      toast.error(error.message || 'Failed to save menu item')
     }
   }
 
@@ -221,17 +190,10 @@ export default function MenuManagement() {
     }
 
     try {
-      const { error } = await supabase
-        .from('menu_categories')
-        .delete()
-        .eq('id', categoryId)
-
-      if (error) throw error
+      await dispatch(deleteMenuCategory(categoryId)).unwrap()
       toast.success('Category deleted successfully')
-      fetchData()
     } catch (error: any) {
       console.error('Error deleting category:', error)
-      toast.error(error.message || 'Failed to delete category')
     }
   }
 
@@ -241,33 +203,19 @@ export default function MenuManagement() {
     }
 
     try {
-      const { error } = await supabase
-        .from('menu_items')
-        .delete()
-        .eq('id', itemId)
-
-      if (error) throw error
+      await dispatch(deleteMenuItem(itemId)).unwrap()
       toast.success('Menu item deleted successfully')
-      fetchData()
     } catch (error: any) {
       console.error('Error deleting menu item:', error)
-      toast.error(error.message || 'Failed to delete menu item')
     }
   }
 
   const toggleItemAvailability = async (itemId: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
-        .from('menu_items')
-        .update({ is_available: !currentStatus })
-        .eq('id', itemId)
-
-      if (error) throw error
+      await dispatch(updateMenuItem({ id: itemId, updates: { is_available: !currentStatus } })).unwrap()
       toast.success(`Menu item ${!currentStatus ? 'enabled' : 'disabled'} successfully`)
-      fetchData()
     } catch (error: any) {
       console.error('Error updating item availability:', error)
-      toast.error(error.message || 'Failed to update item availability')
     }
   }
 

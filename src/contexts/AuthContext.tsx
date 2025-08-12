@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User as SupabaseUser } from '@supabase/supabase-js'
 import { supabase, User } from '../lib/supabase'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { setUser, setLoading, getCurrentUser, signIn as signInAction, signOut as signOutAction } from '../store/slices/authSlice'
 import toast from 'react-hot-toast'
 
 interface AuthContextType {
@@ -23,9 +25,9 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const dispatch = useAppDispatch()
+  const { user, loading } = useAppSelector((state) => state.auth)
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null)
-  const [loading, setLoading] = useState(true)
 
   const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
     try {
@@ -53,26 +55,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const { data: { user: authUser }, error } = await supabase.auth.getUser()
-      
-      if (error) {
-        console.error('Error getting auth user:', error)
-        setUser(null)
-        setSupabaseUser(null)
-        return
-      }
-      
-      if (authUser) {
-        const userProfile = await fetchUserProfile(authUser)
-        setUser(userProfile)
-        setSupabaseUser(authUser)
-      } else {
-        setUser(null)
-        setSupabaseUser(null)
-      }
+      await dispatch(getCurrentUser())
     } catch (error) {
       console.error('Error refreshing user:', error)
-      setUser(null)
+      dispatch(setUser(null))
       setSupabaseUser(null)
     }
   }
@@ -88,19 +74,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSupabaseUser(authUser)
           const userProfile = await fetchUserProfile(authUser)
           if (mounted) {
-            setUser(userProfile)
+            dispatch(setUser(userProfile))
           }
         } else {
           if (mounted) {
             setSupabaseUser(null)
-            setUser(null)
+            dispatch(setUser(null))
           }
         }
       } catch (error) {
         console.error('Error in auth state change:', error)
         if (mounted) {
           setSupabaseUser(null)
-          setUser(null)
+          dispatch(setUser(null))
         }
       }
     }
@@ -119,7 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Error initializing auth:', error)
       } finally {
         if (mounted) {
-          setLoading(false)
+          dispatch(setLoading(false))
         }
       }
     }
@@ -149,15 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        throw error
-      }
-
+      await dispatch(signInAction({ email, password })).unwrap()
       toast.success('Signed in successfully!')
     } catch (error: any) {
       console.error('Sign in error:', error)
@@ -168,10 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
-      
-      setUser(null)
+      await dispatch(signOutAction()).unwrap()
       setSupabaseUser(null)
       toast.success('Signed out successfully!')
     } catch (error: any) {

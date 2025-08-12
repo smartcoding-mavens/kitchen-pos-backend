@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { fetchDashboardStats } from '../store/slices/reportSlice'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
 import {
@@ -28,6 +30,8 @@ interface DashboardStats {
 
 export default function DashboardPage() {
   const { user } = useAuth()
+  const dispatch = useAppDispatch()
+  const { dashboardStats } = useAppSelector((state) => state.report)
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [recentOrders, setRecentOrders] = useState<any[]>([])
@@ -35,8 +39,9 @@ export default function DashboardPage() {
   useEffect(() => {
     if (user?.restaurant_id) {
       fetchDashboardData()
+      dispatch(fetchDashboardStats(user.restaurant_id))
     }
-  }, [user])
+  }, [user, dispatch])
 
   const fetchDashboardData = async () => {
     try {

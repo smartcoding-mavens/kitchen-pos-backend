@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { 
+  fetchBusinessHours, 
+  setRevenueCenters, 
+  updateBusinessHours, 
+  updateLocalBusinessHour,
+  clearError
+} from '../store/slices/businessHoursSlice'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
 import { Clock, Save } from 'lucide-react'
@@ -33,20 +41,23 @@ const DAYS_OF_WEEK = [
 
 export default function BusinessHours() {
   const { user } = useAuth()
-  const [revenueCenters, setRevenueCenters] = useState<RevenueCenter[]>([])
-  const [businessHours, setBusinessHours] = useState<BusinessHour[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const dispatch = useAppDispatch()
+  const { businessHours, revenueCenters, loading, saving, error } = useAppSelector((state) => state.businessHours)
 
   useEffect(() => {
     if (user?.restaurant_id) {
       fetchData()
     }
-  }, [user])
+  }, [user, dispatch])
 
+  useEffect(() => {
+    if (error) {
+      toast.error(error)
+      dispatch(clearError())
+    }
+  }, [error, dispatch])
   const fetchData = async () => {
     try {
-      setLoading(true)
 
       // Fetch revenue centers
       const { data: centers, error: centersError } = await supabase
@@ -57,46 +68,12 @@ export default function BusinessHours() {
 
       if (centersError) throw centersError
 
-      // Fetch existing business hours
-      const { data: hours, error: hoursError } = await supabase
-        .from('business_hours')
-        .select('*')
-        .eq('restaurant_id', user?.restaurant_id)
-
-      if (hoursError) throw hoursError
-
-      setRevenueCenters(centers || [])
-      
-      // Initialize business hours for all centers and days
-      const initialHours: BusinessHour[] = []
-      
-      centers?.forEach(center => {
-        for (let day = 0; day < 7; day++) {
-          const existingHour = hours?.find(
-            h => h.revenue_center_id === center.id && h.day_of_week === day
-          )
-          
-          if (existingHour) {
-            initialHours.push(existingHour)
-          } else {
-            initialHours.push({
-              revenue_center_id: center.id,
-              day_of_week: day,
-              open_time: '09:00',
-              close_time: '22:00',
-              is_closed: false
-            })
-          }
-        }
-      })
-
-      setBusinessHours(initialHours)
+      dispatch(setRevenueCenters(centers || []))
+      dispatch(fetchBusinessHours(user?.restaurant_id!))
 
     } catch (error) {
       console.error('Error fetching business hours:', error)
       toast.error('Failed to load business hours')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -106,18 +83,11 @@ export default function BusinessHours() {
     field: keyof BusinessHour, 
     value: any
   ) => {
-    setBusinessHours(prev => 
-      prev.map(hour => 
-        hour.revenue_center_id === centerId && hour.day_of_week === dayOfWeek
-          ? { ...hour, [field]: value }
-          : hour
-      )
-    )
+    dispatch(updateLocalBusinessHour({ centerId, dayOfWeek, field, value }))
   }
 
   const handleSave = async () => {
     try {
-      setSaving(true)
 
       // Prepare data for upsert
       const hoursToSave = businessHours.map(hour => ({
@@ -127,52 +97,37 @@ export default function BusinessHours() {
         close_time: hour.is_closed ? null : hour.close_time
       }))
 
-      // Delete existing hours for this restaurant
-      const { error: deleteError } = await supabase
-        .from('business_hours')
-        .delete()
-        .eq('restaurant_id', user?.restaurant_id)
-
-      if (deleteError) throw deleteError
-
-      // Insert new hours
-      const { error: insertError } = await supabase
-        .from('business_hours')
-        .insert(hoursToSave)
-
-      if (insertError) throw insertError
-
+      await dispatch(updateBusinessHours({ restaurantId: user?.restaurant_id!, hoursData: hoursToSave })).unwrap()
       toast.success('Business hours saved successfully')
-      fetchData()
 
     } catch (error: any) {
       console.error('Error saving business hours:', error)
-      toast.error(error.message || 'Failed to save business hours')
-    } finally {
-      setSaving(false)
     }
   }
 
   const copyHours = (fromCenterId: string, toCenterId: string) => {
     const fromHours = businessHours.filter(h => h.revenue_center_id === fromCenterId)
     
-    setBusinessHours(prev => 
-      prev.map(hour => {
-        if (hour.revenue_center_id === toCenterId) {
-          const correspondingHour = fromHours.find(h => h.day_of_week === hour.day_of_week)
-          if (correspondingHour) {
-            return {
-              ...hour,
-              open_time: correspondingHour.open_time,
-              close_time: correspondingHour.close_time,
-              is_closed: correspondingHour.is_closed
-            }
-          }
-        }
-        return hour
-      })
-    )
-    
+    fromHours.forEach(fromHour => {
+      dispatch(updateLocalBusinessHour({ 
+        centerId: toCenterId, 
+        dayOfWeek: fromHour.day_of_week, 
+        field: 'open_time', 
+        value: fromHour.open_time 
+      }))
+      dispatch(updateLocalBusinessHour({ 
+        centerId: toCenterId, 
+        dayOfWeek: fromHour.day_of_week, 
+        field: 'close_time', 
+        value: fromHour.close_time 
+      }))
+      dispatch(updateLocalBusinessHour({ 
+        centerId: toCenterId, 
+        dayOfWeek: fromHour.day_of_week, 
+        field: 'is_closed', 
+        value: fromHour.is_closed 
+      }))
+    })
     toast.success('Hours copied successfully')
   }
 

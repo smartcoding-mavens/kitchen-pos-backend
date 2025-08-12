@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { fetchAllRestaurants, updateRestaurantStatus } from '../store/slices/restaurantSlice'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
 import {
@@ -28,13 +30,16 @@ interface SuperAdminStats {
 
 export default function SuperAdminDashboard() {
   const { user } = useAuth()
+  const dispatch = useAppDispatch()
+  const { restaurants } = useAppSelector((state) => state.restaurant)
   const [stats, setStats] = useState<SuperAdminStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [kitchenOwners, setKitchenOwners] = useState<any[]>([])
 
   useEffect(() => {
     fetchSuperAdminData()
-  }, [])
+    dispatch(fetchAllRestaurants())
+  }, [dispatch])
 
   const fetchSuperAdminData = async () => {
     try {
@@ -56,18 +61,10 @@ export default function SuperAdminDashboard() {
 
       if (ownersError) throw ownersError
 
-      // Fetch restaurants
-      const { data: restaurants, error: restaurantsError } = await supabase
-        .from('restaurants')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (restaurantsError) throw restaurantsError
-
       // Calculate stats
       const totalRevenue = owners?.reduce((sum, owner) => sum + Number(owner.subscription_amount), 0) || 0
-      const totalRestaurants = restaurants?.length || 0
-      const activeRestaurants = restaurants?.filter(r => r.status === 'active').length || 0
+      const totalRestaurants = restaurants.length || 0
+      const activeRestaurants = restaurants.filter(r => r.status === 'active').length || 0
       const totalKitchenOwners = owners?.length || 0
 
       // Calculate monthly revenue (current month)
@@ -79,13 +76,13 @@ export default function SuperAdminDashboard() {
       }).reduce((sum, owner) => sum + Number(owner.subscription_amount), 0) || 0
 
       // Get top restaurants (mock data for now - would need order data)
-      const topRestaurants = restaurants?.slice(0, 5).map(restaurant => ({
+      const topRestaurants = restaurants.slice(0, 5).map(restaurant => ({
         ...restaurant,
         sales: Math.floor(Math.random() * 10000) + 1000 // Mock sales data
-      })) || []
+      }))
 
       // Get recent restaurants
-      const recentRestaurants = restaurants?.slice(0, 5) || []
+      const recentRestaurants = restaurants.slice(0, 5)
 
       setStats({
         totalRevenue,
@@ -118,18 +115,10 @@ export default function SuperAdminDashboard() {
 
   const handleStatusChange = async (restaurantId: string, newStatus: string) => {
     try {
-      const { error } = await supabase
-        .from('restaurants')
-        .update({ status: newStatus })
-        .eq('id', restaurantId)
-
-      if (error) throw error
-
+      await dispatch(updateRestaurantStatus({ id: restaurantId, status: newStatus })).unwrap()
       toast.success('Restaurant status updated successfully')
-      fetchSuperAdminData()
     } catch (error) {
       console.error('Error updating restaurant status:', error)
-      toast.error('Failed to update restaurant status')
     }
   }
 

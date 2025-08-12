@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { 
+  fetchOrders, 
+  updateOrderStatus as updateOrderStatusAction, 
+  updateOrderItemStatus as updateOrderItemStatusAction,
+  setSelectedOrder,
+  clearError
+} from '../store/slices/orderSlice'
 import Layout from '../components/Layout'
-import { supabase } from '../lib/supabase'
 import {
   Search,
   Filter,
@@ -56,90 +63,41 @@ interface Order {
 
 export default function OrderManagement() {
   const { user } = useAuth()
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
+  const dispatch = useAppDispatch()
+  const { orders, selectedOrder, loading, error } = useAppSelector((state) => state.order)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [showOrderModal, setShowOrderModal] = useState(false)
 
   useEffect(() => {
     if (user?.restaurant_id) {
-      fetchOrders()
+      dispatch(fetchOrders({ restaurantId: user.restaurant_id }))
     }
-  }, [user])
+  }, [user, dispatch])
 
-  const fetchOrders = async () => {
-    try {
-      setLoading(true)
-
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          customers (name, phone),
-          order_items (
-            *,
-            menu_items (name),
-            combo_meals (name),
-            revenue_centers (name, type)
-          ),
-          payments (status, method, amount)
-        `)
-        .eq('restaurant_id', user?.restaurant_id)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      setOrders(data || [])
-    } catch (error) {
-      console.error('Error fetching orders:', error)
-      toast.error('Failed to load orders')
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (error) {
+      toast.error(error)
+      dispatch(clearError())
     }
-  }
+  }, [error, dispatch])
 
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: newStatus })
-        .eq('id', orderId)
-
-      if (error) throw error
-
+      await dispatch(updateOrderStatusAction({ orderId, status: newStatus })).unwrap()
       toast.success('Order status updated successfully')
-      fetchOrders()
     } catch (error: any) {
       console.error('Error updating order status:', error)
-      toast.error(error.message || 'Failed to update order status')
     }
   }
 
   const updateOrderItemStatus = async (itemId: string, newStatus: string) => {
     try {
-      const { error } = await supabase
-        .from('order_items')
-        .update({ status: newStatus })
-        .eq('id', itemId)
-
-      if (error) throw error
-
+      await dispatch(updateOrderItemStatusAction({ itemId, status: newStatus })).unwrap()
       toast.success('Item status updated successfully')
-      fetchOrders()
-      
-      // Update selected order if modal is open
-      if (selectedOrder) {
-        const updatedOrder = orders.find(o => o.id === selectedOrder.id)
-        if (updatedOrder) {
-          setSelectedOrder(updatedOrder)
-        }
-      }
     } catch (error: any) {
       console.error('Error updating item status:', error)
-      toast.error(error.message || 'Failed to update item status')
     }
   }
 
@@ -336,7 +294,7 @@ export default function OrderManagement() {
                         <td>
                           <button
                             onClick={() => {
-                              setSelectedOrder(order)
+                              dispatch(setSelectedOrder(order))
                               setShowOrderModal(true)
                             }}
                             className="btn-sm btn-secondary"
@@ -370,7 +328,10 @@ export default function OrderManagement() {
                     Order Details - {selectedOrder.order_number}
                   </h3>
                   <button
-                    onClick={() => setShowOrderModal(false)}
+                    onClick={() => {
+                      setShowOrderModal(false)
+                      dispatch(setSelectedOrder(null))
+                    }}
                     className="text-gray-400 hover:text-gray-600"
                   >
                     <XCircle className="h-6 w-6" />

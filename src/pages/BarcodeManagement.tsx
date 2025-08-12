@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { 
+  fetchBarcodes, 
+  createMultipleBarcodes, 
+  createBarcode, 
+  deleteBarcode as deleteBarcodeAction,
+  clearError
+} from '../store/slices/barcodeSlice'
 import Layout from '../components/Layout'
-import { supabase } from '../lib/supabase'
 import {
   Plus,
   QrCode,
@@ -27,8 +34,8 @@ interface Barcode {
 
 export default function BarcodeManagement() {
   const { user } = useAuth()
-  const [barcodes, setBarcodes] = useState<Barcode[]>([])
-  const [loading, setLoading] = useState(true)
+  const dispatch = useAppDispatch()
+  const { barcodes, loading, error } = useAppSelector((state) => state.barcode)
   const [showBarcodeModal, setShowBarcodeModal] = useState(false)
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
@@ -40,30 +47,16 @@ export default function BarcodeManagement() {
 
   useEffect(() => {
     if (user?.restaurant_id) {
-      fetchBarcodes()
+      dispatch(fetchBarcodes({ restaurantId: user.restaurant_id }))
     }
-  }, [user])
+  }, [user, dispatch])
 
-  const fetchBarcodes = async () => {
-    try {
-      setLoading(true)
-
-      const { data, error } = await supabase
-        .from('barcodes')
-        .select('*')
-        .eq('restaurant_id', user?.restaurant_id)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      setBarcodes(data || [])
-    } catch (error) {
-      console.error('Error fetching barcodes:', error)
-      toast.error('Failed to load barcodes')
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (error) {
+      toast.error(error)
+      dispatch(clearError())
     }
-  }
+  }, [error, dispatch])
 
   const generateUniqueCode = () => {
     return `${user?.restaurant_id?.slice(0, 8)}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -86,35 +79,29 @@ export default function BarcodeManagement() {
             is_active: true
           })
         }
+        await dispatch(createMultipleBarcodes(barcodesToCreate)).unwrap()
       } else {
         // Create single barcode
-        barcodesToCreate.push({
+        const barcodeData = {
           restaurant_id: user?.restaurant_id,
           code: generateUniqueCode(),
           type: barcodeForm.type,
           identifier: barcodeForm.identifier || undefined,
           is_active: true
-        })
+        }
+        await dispatch(createBarcode(barcodeData)).unwrap()
       }
 
-      const { error } = await supabase
-        .from('barcodes')
-        .insert(barcodesToCreate)
-
-      if (error) throw error
-
-      toast.success(`${barcodesToCreate.length} barcode(s) created successfully`)
+      toast.success(`${barcodeForm.type === 'table' ? barcodesToCreate.length : 1} barcode(s) created successfully`)
       setShowBarcodeModal(false)
       setBarcodeForm({
         type: 'table',
         identifier: '',
         quantity: 1
       })
-      fetchBarcodes()
 
     } catch (error: any) {
       console.error('Error creating barcodes:', error)
-      toast.error(error.message || 'Failed to create barcodes')
     }
   }
 
@@ -124,18 +111,10 @@ export default function BarcodeManagement() {
     }
 
     try {
-      const { error } = await supabase
-        .from('barcodes')
-        .delete()
-        .eq('id', barcodeId)
-
-      if (error) throw error
-
+      await dispatch(deleteBarcodeAction(barcodeId)).unwrap()
       toast.success('Barcode deleted successfully')
-      fetchBarcodes()
     } catch (error: any) {
       console.error('Error deleting barcode:', error)
-      toast.error(error.message || 'Failed to delete barcode')
     }
   }
 

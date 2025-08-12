@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { 
+  fetchCustomers, 
+  fetchCustomerOrders, 
+  setSelectedCustomer,
+  clearError
+} from '../store/slices/customerSlice'
 import Layout from '../components/Layout'
-import { supabase } from '../lib/supabase'
 import {
   Search,
   Eye,
@@ -35,64 +41,28 @@ interface CustomerOrder {
 
 export default function CustomerManagement() {
   const { user } = useAuth()
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [loading, setLoading] = useState(true)
+  const dispatch = useAppDispatch()
+  const { customers, selectedCustomer, customerOrders, loading, loadingOrders, error } = useAppSelector((state) => state.customer)
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([])
   const [showCustomerModal, setShowCustomerModal] = useState(false)
-  const [loadingOrders, setLoadingOrders] = useState(false)
 
   useEffect(() => {
     if (user?.restaurant_id) {
-      fetchCustomers()
+      dispatch(fetchCustomers({ restaurantId: user.restaurant_id }))
     }
-  }, [user])
+  }, [user, dispatch])
 
-  const fetchCustomers = async () => {
-    try {
-      setLoading(true)
-
-      const { data, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('restaurant_id', user?.restaurant_id)
-        .order('total_spent', { ascending: false })
-
-      if (error) throw error
-
-      setCustomers(data || [])
-    } catch (error) {
-      console.error('Error fetching customers:', error)
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (error) {
+      toast.error(error)
+      dispatch(clearError())
     }
-  }
-
-  const fetchCustomerOrders = async (customerId: string) => {
-    try {
-      setLoadingOrders(true)
-
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id, order_number, type, status, total_amount, created_at')
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      setCustomerOrders(data || [])
-    } catch (error) {
-      console.error('Error fetching customer orders:', error)
-    } finally {
-      setLoadingOrders(false)
-    }
-  }
+  }, [error, dispatch])
 
   const openCustomerModal = async (customer: Customer) => {
-    setSelectedCustomer(customer)
+    dispatch(setSelectedCustomer(customer))
     setShowCustomerModal(true)
-    await fetchCustomerOrders(customer.id)
+    dispatch(fetchCustomerOrders(customer.id))
   }
 
   const getStatusBadge = (status: string) => {
@@ -315,7 +285,10 @@ export default function CustomerManagement() {
                     Customer Details
                   </h3>
                   <button
-                    onClick={() => setShowCustomerModal(false)}
+                    onClick={() => {
+                      setShowCustomerModal(false)
+                      dispatch(setSelectedCustomer(null))
+                    }}
                     className="text-gray-400 hover:text-gray-600"
                   >
                     ×

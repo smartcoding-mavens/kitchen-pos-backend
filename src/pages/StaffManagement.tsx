@@ -1,7 +1,16 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { 
+  fetchStaff, 
+  createStaff as createStaffAction, 
+  updateStaff as updateStaffAction, 
+  deleteStaff as deleteStaffAction,
+  updateStaffStatus as updateStaffStatusAction,
+  clearError
+} from '../store/slices/staffSlice'
+import { fetchRevenueCenters } from '../store/slices/restaurantSlice'
 import Layout from '../components/Layout'
-import { supabase } from '../lib/supabase'
 import {
   Plus,
   Edit,
@@ -32,9 +41,9 @@ interface Staff {
 
 export default function StaffManagement() {
   const { user } = useAuth()
-  const [staff, setStaff] = useState<Staff[]>([])
-  const [revenueCenters, setRevenueCenters] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const dispatch = useAppDispatch()
+  const { staff, loading, error } = useAppSelector((state) => state.staff)
+  const { revenueCenters } = useAppSelector((state) => state.restaurant)
   const [searchTerm, setSearchTerm] = useState('')
   const [showStaffModal, setShowStaffModal] = useState(false)
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null)
@@ -49,48 +58,17 @@ export default function StaffManagement() {
 
   useEffect(() => {
     if (user?.restaurant_id) {
-      fetchData()
+      dispatch(fetchStaff(user.restaurant_id))
+      dispatch(fetchRevenueCenters(user.restaurant_id))
     }
-  }, [user])
+  }, [user, dispatch])
 
-  const fetchData = async () => {
-    try {
-      setLoading(true)
-
-      // Fetch revenue centers
-      const { data: centers, error: centersError } = await supabase
-        .from('revenue_centers')
-        .select('*')
-        .eq('restaurant_id', user?.restaurant_id)
-        .eq('is_active', true)
-
-      if (centersError) throw centersError
-
-      // Fetch staff
-      const { data: staffData, error: staffError } = await supabase
-        .from('users')
-        .select(`
-          *,
-          staff_assignments (
-            revenue_centers (id, name, type)
-          )
-        `)
-        .eq('restaurant_id', user?.restaurant_id)
-        .in('role', ['manager', 'staff'])
-        .order('created_at', { ascending: false })
-
-      if (staffError) throw staffError
-
-      setRevenueCenters(centers || [])
-      setStaff(staffData || [])
-
-    } catch (error) {
-      console.error('Error fetching staff data:', error)
-      toast.error('Failed to load staff data')
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (error) {
+      toast.error(error)
+      dispatch(clearError())
     }
-  }
+  }, [error, dispatch])
 
   const generateRandomPassword = (length: number = 8): string => {
     const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -106,90 +84,27 @@ export default function StaffManagement() {
     
     try {
       if (editingStaff) {
-        // Update existing staff
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({
+        await dispatch(updateStaffAction({ 
+          staffId: editingStaff.id, 
+          updates: {
             full_name: staffForm.full_name,
             role: staffForm.role,
             is_active: true
-          })
-          .eq('id', editingStaff.id)
-
-        if (updateError) throw updateError
-
-        // Update staff assignments
-        // First, delete existing assignments
-        const { error: deleteError } = await supabase
-          .from('staff_assignments')
-          .delete()
-          .eq('user_id', editingStaff.id)
-
-        if (deleteError) throw deleteError
-
-        // Then, create new assignments
-        if (staffForm.revenue_center_ids.length > 0) {
-          const assignments = staffForm.revenue_center_ids.map(centerId => ({
-            user_id: editingStaff.id,
-            revenue_center_id: centerId
-          }))
-
-          const { error: assignError } = await supabase
-            .from('staff_assignments')
-            .insert(assignments)
-
-          if (assignError) throw assignError
-        }
-
+          }
+        })).unwrap()
         toast.success('Staff member updated successfully')
       } else {
-        // Create new staff
-        const password = staffForm.password || generateRandomPassword()
-
-        // Create auth user
-        const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+        const staffData = {
           email: staffForm.email,
-          password: password,
-          email_confirm: true,
-          user_metadata: {
-            full_name: staffForm.full_name,
-            role: staffForm.role
-          }
-        })
-
-        if (authError) throw authError
-
-        // Create user record
-        const { data: newUser, error: userError } = await supabase
-          .from('users')
-          .insert({
-            auth_user_id: authUser.user.id,
-            email: staffForm.email,
-            full_name: staffForm.full_name,
-            role: staffForm.role,
-            restaurant_id: user?.restaurant_id,
-            is_active: true
-          })
-          .select()
-          .single()
-
-        if (userError) throw userError
-
-        // Create staff assignments
-        if (staffForm.revenue_center_ids.length > 0) {
-          const assignments = staffForm.revenue_center_ids.map(centerId => ({
-            user_id: newUser.id,
-            revenue_center_id: centerId
-          }))
-
-          const { error: assignError } = await supabase
-            .from('staff_assignments')
-            .insert(assignments)
-
-          if (assignError) throw assignError
+          full_name: staffForm.full_name,
+          role: staffForm.role,
+          restaurant_id: user?.restaurant_id!,
+          password: staffForm.password,
+          revenue_center_ids: staffForm.revenue_center_ids
         }
 
-        toast.success(`Staff member created successfully. Password: ${password}`)
+        const result = await dispatch(createStaffAction(staffData)).unwrap()
+        toast.success(`Staff member created successfully. Password: ${result.password}`)
       }
 
       setShowStaffModal(false)
@@ -201,11 +116,9 @@ export default function StaffManagement() {
         password: '',
         revenue_center_ids: []
       })
-      fetchData()
 
     } catch (error: any) {
       console.error('Error saving staff:', error)
-      toast.error(error.message || 'Failed to save staff member')
     }
   }
 
@@ -215,56 +128,19 @@ export default function StaffManagement() {
     }
 
     try {
-      // Get the staff member to get auth_user_id
-      const { data: staffMember, error: fetchError } = await supabase
-        .from('users')
-        .select('auth_user_id')
-        .eq('id', staffId)
-        .single()
-
-      if (fetchError) throw fetchError
-
-      // Delete user record (this will cascade delete staff assignments)
-      const { error: deleteError } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', staffId)
-
-      if (deleteError) throw deleteError
-
-      // Delete auth user
-      if (staffMember.auth_user_id) {
-        const { error: authDeleteError } = await supabase.auth.admin.deleteUser(
-          staffMember.auth_user_id
-        )
-
-        if (authDeleteError) {
-          console.error('Error deleting auth user:', authDeleteError)
-        }
-      }
-
+      await dispatch(deleteStaffAction(staffId)).unwrap()
       toast.success('Staff member deleted successfully')
-      fetchData()
     } catch (error: any) {
       console.error('Error deleting staff:', error)
-      toast.error(error.message || 'Failed to delete staff member')
     }
   }
 
   const toggleStaffStatus = async (staffId: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({ is_active: !currentStatus })
-        .eq('id', staffId)
-
-      if (error) throw error
-
+      await dispatch(updateStaffStatusAction({ staffId, isActive: !currentStatus })).unwrap()
       toast.success(`Staff member ${!currentStatus ? 'activated' : 'deactivated'} successfully`)
-      fetchData()
     } catch (error: any) {
       console.error('Error updating staff status:', error)
-      toast.error(error.message || 'Failed to update staff status')
     }
   }
 

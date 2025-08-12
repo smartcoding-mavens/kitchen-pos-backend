@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { 
+  generateSalesReport, 
+  clearError
+} from '../store/slices/reportSlice'
 import Layout from '../components/Layout'
-import { supabase } from '../lib/supabase'
 import {
   BarChart3,
   TrendingUp,
@@ -45,8 +49,8 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 
 export default function ReportsPage() {
   const { user } = useAuth()
-  const [reportData, setReportData] = useState<ReportData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const dispatch = useAppDispatch()
+  const { salesReport: reportData, loading, error } = useAppSelector((state) => state.report)
   const [dateRange, setDateRange] = useState('week')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -55,8 +59,14 @@ export default function ReportsPage() {
     if (user?.restaurant_id) {
       fetchReportData()
     }
-  }, [user, dateRange, startDate, endDate])
+  }, [user, dateRange, startDate, endDate, dispatch])
 
+  useEffect(() => {
+    if (error) {
+      toast.error(error)
+      dispatch(clearError())
+    }
+  }, [error, dispatch])
   const getDateRange = () => {
     const now = new Date()
     
@@ -79,126 +89,16 @@ export default function ReportsPage() {
 
   const fetchReportData = async () => {
     try {
-      setLoading(true)
       const { start, end } = getDateRange()
 
-      // Fetch orders within date range
-      const { data: orders, error: ordersError } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          order_items (
-            *,
-            menu_items (name),
-            combo_meals (name),
-            revenue_centers (name, type)
-          ),
-          payments (method, amount, status)
-        `)
-        .eq('restaurant_id', user?.restaurant_id)
-        .gte('created_at', start.toISOString())
-        .lte('created_at', end.toISOString())
-        .in('status', ['served', 'ready']) // Only completed orders
+      const filters = {
+        date_from: start.toISOString(),
+        date_to: end.toISOString()
+      }
 
-      if (ordersError) throw ordersError
-
-      // Calculate metrics
-      const totalSales = orders?.reduce((sum, order) => sum + Number(order.total_amount), 0) || 0
-      const totalOrders = orders?.length || 0
-      const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0
-
-      // Top selling items
-      const itemSales: { [key: string]: { quantity: number; revenue: number } } = {}
-      
-      orders?.forEach(order => {
-        order.order_items?.forEach((item: any) => {
-          const itemName = item.menu_items?.name || item.combo_meals?.name || 'Unknown Item'
-          if (!itemSales[itemName]) {
-            itemSales[itemName] = { quantity: 0, revenue: 0 }
-          }
-          itemSales[itemName].quantity += item.quantity
-          itemSales[itemName].revenue += Number(item.total_price)
-        })
-      })
-
-      const topSellingItems = Object.entries(itemSales)
-        .map(([name, data]) => ({ name, ...data }))
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 10)
-
-      // Sales by day
-      const salesByDay: { [key: string]: { sales: number; orders: number } } = {}
-      
-      orders?.forEach(order => {
-        const date = format(new Date(order.created_at), 'yyyy-MM-dd')
-        if (!salesByDay[date]) {
-          salesByDay[date] = { sales: 0, orders: 0 }
-        }
-        salesByDay[date].sales += Number(order.total_amount)
-        salesByDay[date].orders += 1
-      })
-
-      const salesByDayArray = Object.entries(salesByDay)
-        .map(([date, data]) => ({ date: format(new Date(date), 'MMM dd'), ...data }))
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-
-      // Sales by revenue center
-      const centerSales: { [key: string]: { sales: number; orders: number } } = {}
-      
-      orders?.forEach(order => {
-        order.order_items?.forEach((item: any) => {
-          const centerName = item.revenue_centers?.name || 'Unknown'
-          if (!centerSales[centerName]) {
-            centerSales[centerName] = { sales: 0, orders: 0 }
-          }
-          centerSales[centerName].sales += Number(item.total_price)
-        })
-      })
-
-      orders?.forEach(order => {
-        const centers = new Set(order.order_items?.map((item: any) => item.revenue_centers?.name))
-        centers.forEach(centerName => {
-          if (centerName && centerSales[centerName]) {
-            centerSales[centerName].orders += 1 / centers.size // Distribute order count
-          }
-        })
-      })
-
-      const salesByRevenueCenter = Object.entries(centerSales)
-        .map(([name, data]) => ({ name, ...data }))
-
-      // Payment methods
-      const paymentMethods: { [key: string]: { amount: number; count: number } } = {}
-      
-      orders?.forEach(order => {
-        order.payments?.forEach((payment: any) => {
-          if (payment.status === 'completed') {
-            if (!paymentMethods[payment.method]) {
-              paymentMethods[payment.method] = { amount: 0, count: 0 }
-            }
-            paymentMethods[payment.method].amount += Number(payment.amount)
-            paymentMethods[payment.method].count += 1
-          }
-        })
-      })
-
-      const paymentMethodsArray = Object.entries(paymentMethods)
-        .map(([method, data]) => ({ method, ...data }))
-
-      setReportData({
-        totalSales,
-        totalOrders,
-        averageOrderValue,
-        topSellingItems,
-        salesByDay: salesByDayArray,
-        salesByRevenueCenter,
-        paymentMethods: paymentMethodsArray
-      })
-
+      dispatch(generateSalesReport({ restaurantId: user?.restaurant_id!, filters }))
     } catch (error) {
       console.error('Error fetching report data:', error)
-    } finally {
-      setLoading(false)
     }
   }
 
