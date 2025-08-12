@@ -32,24 +32,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
     try {
       console.log('🔍 Fetching user profile for auth user:', authUser.id)
-      const { data, error } = await supabase
+      
+      // Add timeout to prevent hanging
+      const queryPromise = supabase
         .from('users')
         .select('*')
         .eq('auth_user_id', authUser.id)
         .single()
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout')), 10000)
+      )
+      
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any
 
       console.log('📊 Query result - data:', data, 'error:', error)
 
       if (error) {
         if (error.code === 'PGRST116') {
           console.warn('❌ User profile not found for auth user:', authUser.id)
-          // Set loading to false even when profile not found
-          dispatch(setUser(null))
+          if (mounted) {
+            dispatch(setUser(null))
+          }
           return null
         }
         console.error('❌ Error fetching user profile:', error)
-        // Set loading to false on error
-        dispatch(setUser(null))
+        if (mounted) {
+          dispatch(setUser(null))
+        }
         return null
       }
 
@@ -57,8 +67,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return data
     } catch (error) {
       console.error('💥 Exception in fetchUserProfile:', error)
-      // Set loading to false on exception
-      dispatch(setUser(null))
+      if (mounted) {
+        dispatch(setUser(null))
+      }
       return null
     }
   }
