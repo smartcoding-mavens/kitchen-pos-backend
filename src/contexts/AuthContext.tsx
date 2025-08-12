@@ -37,19 +37,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Error fetching user profile:', error)
-        // If user profile doesn't exist, sign out to prevent infinite loading
         if (error.code === 'PGRST116') {
-          console.warn('User profile not found, signing out')
-          await supabase.auth.signOut()
+          console.warn('User profile not found for auth user:', authUser.id)
+          return null
         }
-        return null
+        throw error
       }
 
       return data
     } catch (error) {
       console.error('Error fetching user profile:', error)
-      // Sign out on unexpected errors to prevent infinite loading
-      await supabase.auth.signOut()
       return null
     }
   }
@@ -83,12 +80,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        setLoading(true)
         // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
           console.error('Error getting session:', error)
-          setLoading(false)
+          setUser(null)
+          setSupabaseUser(null)
           return
         }
         
@@ -96,19 +95,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSupabaseUser(session.user)
           const userProfile = await fetchUserProfile(session.user)
           setUser(userProfile)
+        } else {
+          setUser(null)
+          setSupabaseUser(null)
         }
       } catch (error) {
         console.error('Error initializing auth:', error)
+        setUser(null)
+        setSupabaseUser(null)
       } finally {
         setLoading(false)
       }
     }
 
-    initializeAuth()
-
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state change:', event, session?.user?.email)
+        
         try {
           if (session?.user) {
             setSupabaseUser(session.user)
@@ -122,11 +126,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error('Error in auth state change:', error)
           setSupabaseUser(null)
           setUser(null)
-        } finally {
-          setLoading(false)
         }
       }
     )
+
+    // Initialize auth after setting up the listener
+    initializeAuth()
 
     return () => subscription.unsubscribe()
   }, [])
