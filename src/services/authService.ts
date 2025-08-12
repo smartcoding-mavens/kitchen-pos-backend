@@ -18,22 +18,32 @@ export class AuthService {
   }
 
   static async getCurrentUser(): Promise<User | null> {
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    try {
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError) {
+        console.error('Error getting auth user:', authError)
+        return null
+      }
     
-    if (!authUser) return null
+      if (!authUser) return null
 
-    const { data: userProfile, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('auth_user_id', authUser.id)
-      .single()
+      const { data: userProfile, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_user_id', authUser.id)
+        .single()
 
-    if (error) {
-      console.error('Error fetching user profile:', error)
+      if (error) {
+        console.error('Error fetching user profile:', error)
+        return null
+      }
+
+      return userProfile
+    } catch (error) {
+      console.error('Unexpected error getting current user:', error)
       return null
     }
-
-    return userProfile
   }
 
   static async updateUserProfile(userId: string, updates: Partial<User>) {

@@ -6,7 +6,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
-  const { user, signIn, loading } = useAuth()
+  const { user, signIn, loading, error: authError } = useAuth()
   const location = useLocation()
   const [formData, setFormData] = useState({
     email: '',
@@ -66,6 +66,11 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {authError && (
+          <div className="bg-red-50 border border-red-200 rounded-md p-4">
+            <p className="text-sm text-red-600">{authError}</p>
+          </div>
+        )}
         <div className="card">
           <div className="card-content">
             <form className="space-y-6" onSubmit={handleSubmit}>
