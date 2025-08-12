@@ -30,23 +30,17 @@ export default function DashboardPage() {
   const { user } = useAuth()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [recentOrders, setRecentOrders] = useState<any[]>([])
 
   useEffect(() => {
     if (user?.restaurant_id) {
       fetchDashboardData()
-    } else if (user && !user.restaurant_id) {
-      // User exists but no restaurant_id, stop loading
-      setLoading(false)
-      setError('Restaurant not found')
     }
   }, [user])
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true)
-      setError(null)
       
       const today = new Date()
       const yesterday = subDays(today, 1)
@@ -111,7 +105,6 @@ export default function DashboardPage() {
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
-      setError('Failed to load dashboard data')
     } finally {
       setLoading(false)
     }
@@ -151,23 +144,6 @@ export default function DashboardPage() {
     )
   }
 
-  if (error) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <p className="text-red-600 mb-4">{error}</p>
-            <button
-              onClick={() => fetchDashboardData()}
-              className="btn-primary btn-md"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </Layout>
-    )
-  }
   const salesGrowth = stats?.yesterdaySales 
     ? ((stats.todaySales - stats.yesterdaySales) / stats.yesterdaySales) * 100 
     : 0

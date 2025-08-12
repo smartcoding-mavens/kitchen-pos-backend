@@ -14,7 +14,7 @@ export function ProtectedRoute({
   requiredRole, 
   requiredRoles 
 }: ProtectedRouteProps) {
-  const { user, loading, error } = useAuth()
+  const { user, loading } = useAuth()
   const location = useLocation()
 
   if (loading) {
@@ -25,16 +25,6 @@ export function ProtectedRoute({
     )
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Authentication Error: {error}</p>
-          <Navigate to="/login" state={{ from: location }} replace />
-        </div>
-      </div>
-    )
-  }
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
