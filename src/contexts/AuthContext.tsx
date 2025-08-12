@@ -69,24 +69,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const handleAuthStateChange = async (authUser: SupabaseUser | null) => {
       if (!mounted) return
 
+      console.log('🔄 handleAuthStateChange called with user:', authUser?.email || 'null')
+      
       try {
         if (authUser) {
+          console.log('👤 Setting supabase user and fetching profile...')
           setSupabaseUser(authUser)
           const userProfile = await fetchUserProfile(authUser)
+          console.log('📋 User profile fetched:', userProfile?.email || 'null')
           if (mounted) {
             dispatch(setUser(userProfile))
+            console.log('✅ User profile set in Redux')
           }
         } else {
+          console.log('❌ No auth user, clearing state...')
           if (mounted) {
             setSupabaseUser(null)
             dispatch(setUser(null))
+            console.log('✅ User cleared in Redux')
           }
         }
       } catch (error) {
         console.error('Error in auth state change:', error)
+        console.log('💥 Error occurred, clearing state...')
         if (mounted) {
           setSupabaseUser(null)
           dispatch(setUser(null))
+          console.log('✅ User cleared due to error')
         }
       }
     }
