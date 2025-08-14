@@ -35,8 +35,10 @@ export default function LoginPage() {
 
     try {
       await signIn(formData.email, formData.password)
+      toast.success('Signed in successfully!')
     } catch (error) {
-      // Error is already handled in the signIn function
+      console.error('Sign in error:', error)
+      toast.error((error as any).message || 'Failed to sign in')
     } finally {
       setIsLoading(false)
     }

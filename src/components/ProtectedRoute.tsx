@@ -1,6 +1,7 @@
 import React from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import authMiddleware from '../middleware/authMiddleware'
 import LoadingSpinner from './LoadingSpinner'
 
 interface ProtectedRouteProps {
@@ -30,11 +31,11 @@ export function ProtectedRoute({
   }
 
   // Check if user has required role
-  if (requiredRole && user.role !== requiredRole) {
+  if (requiredRole && !authMiddleware.hasRole(requiredRole)) {
     return <Navigate to="/dashboard" replace />
   }
 
-  if (requiredRoles && !requiredRoles.includes(user.role)) {
+  if (requiredRoles && !authMiddleware.hasAnyRole(requiredRoles)) {
     return <Navigate to="/dashboard" replace />
   }
 

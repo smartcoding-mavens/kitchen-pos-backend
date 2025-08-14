@@ -32,6 +32,7 @@ export default function Layout({ children }: LayoutProps) {
   const handleSignOut = async () => {
     try {
       await signOut()
+      toast.success('Signed out successfully!')
       navigate('/login')
     } catch (error) {
       toast.error('Failed to sign out')
