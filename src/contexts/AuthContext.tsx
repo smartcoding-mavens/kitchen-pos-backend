@@ -23,7 +23,7 @@ export function useAuth() {
   }
   return context
 }
-
+ 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const dispatch = useAppDispatch()
   const { user, loading } = useAppSelector((state) => state.auth)
@@ -32,134 +32,102 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchUserProfile = async (authUser: SupabaseUser): Promise<User | null> => {
     try {
       console.log('🔍 Fetching user profile for auth user:', authUser.id)
-      
-      // Add timeout to prevent hanging
-      const queryPromise = supabase
+
+      // Just warn if slow, don’t reject
+      const timeoutId = setTimeout(() => {
+        console.warn('⚠️ Supabase query is taking longer than expected...')
+      }, 10000)
+
+      const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('auth_user_id', authUser.id)
         .single()
-      
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Query timeout')), 10000)
-      )
-      
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any
 
-      console.log('📊 Query result - data:', data, 'error:', error)
+      clearTimeout(timeoutId)
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          console.warn('❌ User profile not found for auth user:', authUser.id)
-          if (mounted) {
-            dispatch(setUser(null))
-          }
-          return null
-        }
         console.error('❌ Error fetching user profile:', error)
-        if (mounted) {
-          dispatch(setUser(null))
-        }
         return null
       }
 
-      console.log('✅ User profile fetched successfully:', data.email)
+      console.log('✅ User profile fetched successfully:', data?.email)
       return data
-    } catch (error) {
-      console.error('💥 Exception in fetchUserProfile:', error)
-      if (mounted) {
-        dispatch(setUser(null))
-      }
+    } catch (err) {
+      console.error('💥 Exception in fetchUserProfile:', err)
       return null
     }
   }
 
-  const refreshUser = async () => {
-    try {
-      await dispatch(getCurrentUser())
-    } catch (error) {
-      console.error('Error refreshing user:', error)
-      dispatch(setUser(null))
-      setSupabaseUser(null)
+  const setUserData = (userData: User | null) => {
+    if (userData) {
+      localStorage.setItem('user', JSON.stringify(userData))
+    } else {
+      localStorage.removeItem('user')
     }
+    dispatch(setUser(userData))
+  }
+
+  const handleAuthStateChange = async (authUser: SupabaseUser | null) => {
+    if (authUser) {
+      setSupabaseUser(authUser)
+
+      // Check cache first
+      const cachedUser = localStorage.getItem('user')
+      if (cachedUser) {
+        console.log('📦 Loaded user from localStorage')
+        setUserData(JSON.parse(cachedUser))
+        dispatch(setLoading(false))
+        return
+      }
+
+      // No cache → fetch from Supabase
+      const userProfile = await fetchUserProfile(authUser)
+      setUserData(userProfile)
+    } else {
+      console.log('❌ No auth user, clearing state...')
+      setSupabaseUser(null)
+      setUserData(null)
+    }
+
+    dispatch(setLoading(false))
   }
 
   useEffect(() => {
     let mounted = true
 
-    const handleAuthStateChange = async (authUser: SupabaseUser | null) => {
-      if (!mounted) return
-
-      console.log('🔄 handleAuthStateChange called with user:', authUser?.email || 'null')
-      
-      try {
-        if (authUser) {
-          console.log('👤 Setting supabase user and fetching profile...')
-          setSupabaseUser(authUser)
-          const userProfile = await fetchUserProfile(authUser)
-          console.log('📋 User profile fetched:', userProfile?.email || 'null')
-          if (mounted) {
-            dispatch(setUser(userProfile))
-            console.log('✅ User profile set in Redux')
-          }
-        } else {
-          console.log('❌ No auth user, clearing state...')
-          if (mounted) {
-            setSupabaseUser(null)
-            dispatch(setUser(null))
-            console.log('✅ User cleared in Redux')
-          }
-        }
-      } catch (error) {
-        console.error('Error in auth state change:', error)
-        console.log('💥 Error occurred, clearing state...')
-        if (mounted) {
-          setSupabaseUser(null)
-          dispatch(setUser(null))
-          console.log('✅ User cleared due to error')
-        }
-      }
-    }
-
     const initializeAuth = async () => {
-      try {
-        console.log('🔍 Initializing auth...')
-        // Get initial session
-        const { data: { session }, error } = await supabase.auth.getSession()
-        
-        console.log('📋 Session data:', session)
-        console.log('❌ Session error:', error)
-        
-        if (error) {
-          console.error('Error getting session:', error)
-          if (mounted) {
-            console.log('⚠️ Setting loading to false due to session error')
-            dispatch(setLoading(false))
-          }
-        } else if (session?.user) {
-          console.log('✅ Session found, handling auth state change for user:', session.user.email)
-          await handleAuthStateChange(session.user)
-        } else {
-          // No session found, user is not authenticated
-          console.log('❌ No session found, setting user to null')
-          if (mounted) {
-            dispatch(setUser(null))
-          }
-        }
-      } catch (error) {
-        console.error('Error initializing auth:', error)
-        console.log('💥 Exception in initializeAuth, setting user to null')
-        if (mounted) {
-          dispatch(setUser(null))
-        }
+      console.log('🔍 Initializing auth...')
+
+      // If cache exists → set immediately
+      const cachedUser = localStorage.getItem('user')
+      if (cachedUser) {
+        console.log('📦 Loaded cached user on init')
+        setUserData(JSON.parse(cachedUser))
+      }
+
+      // Get initial session
+      const { data: { session }, error } = await supabase.auth.getSession()
+      if (error) {
+        console.error('❌ Error getting session:', error)
+        dispatch(setLoading(false))
+        return
+      }
+
+      if (session?.user) {
+        await handleAuthStateChange(session.user)
+      } else {
+        if (!cachedUser) setUserData(null)
+        dispatch(setLoading(false))
       }
     }
 
-    // Set up auth state change listener
+    initializeAuth()
+
+    // Auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state change:', event, session?.user?.email)
-        
+      async (_, session) => {
+        if (!mounted) return
         await handleAuthStateChange(session?.user || null)
       }
     )
@@ -185,6 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await dispatch(signOutAction()).unwrap()
       setSupabaseUser(null)
+      setUserData(null)
       toast.success('Signed out successfully!')
     } catch (error: any) {
       console.error('Sign out error:', error)
@@ -199,12 +168,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     signIn,
     signOut,
-    refreshUser,
+    refreshUser: async () => {
+      const session = (await supabase.auth.getSession()).data.session
+      if (session?.user) {
+        const userProfile = await fetchUserProfile(session.user)
+        setUserData(userProfile)
+      }
+    },
   }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
