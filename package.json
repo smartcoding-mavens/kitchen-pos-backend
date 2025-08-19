@@ -10,8 +10,7 @@
     "preview": "vite preview",
     "create-super-admin": "node scripts/create-super-admin.js",
     "debug-super-admin": "node scripts/debug-super-admin.js",
-    "fix-auth-user": "node scripts/create-missing-auth-user.js",
-    "setup-super-admin": "node scripts/setup-super-admin.js"
+    "fix-auth-user": "node scripts/create-missing-auth-user.js"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.8.2",
