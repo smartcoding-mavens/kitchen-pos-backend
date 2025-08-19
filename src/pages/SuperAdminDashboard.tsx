@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { fetchAllRestaurants, updateRestaurantStatus } from '../store/slices/restaurantSlice'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
+import {
   DollarSign,
   Store,
   Users,
@@ -43,7 +44,6 @@ export default function SuperAdminDashboard() {
       setLoading(true)
 
       // Fetch restaurants first
-      console.log('Fetching restaurants as super admin...')
       const { data: restaurants, error: restaurantsError } = await supabase
         .from('restaurants')
         .select(`
@@ -58,7 +58,6 @@ export default function SuperAdminDashboard() {
 
       if (restaurantsError) {
         console.error('Error fetching restaurants:', restaurantsError)
-        toast.error(`Restaurant fetch error: ${restaurantsError.message}`)
         // Continue with empty array if restaurants fetch fails
       }
 
@@ -78,7 +77,6 @@ export default function SuperAdminDashboard() {
 
       if (ownersError) {
         console.error('Error fetching kitchen owners:', ownersError)
-        toast.error(`Kitchen owners fetch error: ${ownersError.message}`)
         toast.error('Failed to load kitchen owners data')
         return
       }
