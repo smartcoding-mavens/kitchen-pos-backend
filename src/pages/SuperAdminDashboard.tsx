@@ -4,7 +4,6 @@ import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { fetchAllRestaurants, updateRestaurantStatus } from '../store/slices/restaurantSlice'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
-import {
   DollarSign,
   Store,
   Users,
@@ -14,9 +13,9 @@ import {
   BarChart3,
   Eye
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { format } from 'date-fns'
-import toast from 'react-hot-toast'
 
 interface SuperAdminStats {
   totalRevenue: number
@@ -31,19 +30,37 @@ interface SuperAdminStats {
 export default function SuperAdminDashboard() {
   const { user } = useAuth()
   const dispatch = useAppDispatch()
-  const { restaurants } = useAppSelector((state) => state.restaurant)
   const [stats, setStats] = useState<SuperAdminStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [kitchenOwners, setKitchenOwners] = useState<any[]>([])
 
   useEffect(() => {
     fetchSuperAdminData()
-    dispatch(fetchAllRestaurants())
   }, [dispatch])
 
   const fetchSuperAdminData = async () => {
     try {
       setLoading(true)
+
+      // Fetch restaurants first
+      console.log('Fetching restaurants as super admin...')
+      const { data: restaurants, error: restaurantsError } = await supabase
+        .from('restaurants')
+        .select(`
+          *,
+          kitchen_owners (
+            full_name,
+            email,
+            subscription_plan
+          )
+        `)
+        .order('created_at', { ascending: false })
+
+      if (restaurantsError) {
+        console.error('Error fetching restaurants:', restaurantsError)
+        toast.error(`Restaurant fetch error: ${restaurantsError.message}`)
+        // Continue with empty array if restaurants fetch fails
+      }
 
       // Fetch kitchen owners
       const { data: owners, error: ownersError } = await supabase
@@ -59,12 +76,17 @@ export default function SuperAdminDashboard() {
         `)
         .order('created_at', { ascending: false })
 
-      if (ownersError) throw ownersError
+      if (ownersError) {
+        console.error('Error fetching kitchen owners:', ownersError)
+        toast.error(`Kitchen owners fetch error: ${ownersError.message}`)
+        toast.error('Failed to load kitchen owners data')
+        return
+      }
 
       // Calculate stats
       const totalRevenue = owners?.reduce((sum, owner) => sum + Number(owner.subscription_amount), 0) || 0
-      const totalRestaurants = restaurants.length || 0
-      const activeRestaurants = restaurants.filter(r => r.status === 'active').length || 0
+      const totalRestaurants = restaurants?.length || 0
+      const activeRestaurants = restaurants?.filter(r => r.status === 'active').length || 0
       const totalKitchenOwners = owners?.length || 0
 
       // Calculate monthly revenue (current month)
@@ -76,13 +98,13 @@ export default function SuperAdminDashboard() {
       }).reduce((sum, owner) => sum + Number(owner.subscription_amount), 0) || 0
 
       // Get top restaurants (mock data for now - would need order data)
-      const topRestaurants = restaurants.slice(0, 5).map(restaurant => ({
+      const topRestaurants = (restaurants || []).slice(0, 5).map(restaurant => ({
         ...restaurant,
         sales: Math.floor(Math.random() * 10000) + 1000 // Mock sales data
       }))
 
       // Get recent restaurants
-      const recentRestaurants = restaurants.slice(0, 5)
+      const recentRestaurants = (restaurants || []).slice(0, 5)
 
       setStats({
         totalRevenue,
@@ -98,7 +120,7 @@ export default function SuperAdminDashboard() {
 
     } catch (error) {
       console.error('Error fetching super admin data:', error)
-      toast.error('Failed to load dashboard data')
+      toast.error('Failed to load some dashboard data')
     } finally {
       setLoading(false)
     }
@@ -115,10 +137,19 @@ export default function SuperAdminDashboard() {
 
   const handleStatusChange = async (restaurantId: string, newStatus: string) => {
     try {
-      await dispatch(updateRestaurantStatus({ id: restaurantId, status: newStatus })).unwrap()
+      const { error } = await supabase
+        .from('restaurants')
+        .update({ status: newStatus })
+        .eq('id', restaurantId)
+
+      if (error) throw error
+
       toast.success('Restaurant status updated successfully')
+      // Refresh data
+      fetchSuperAdminData()
     } catch (error) {
       console.error('Error updating restaurant status:', error)
+      toast.error('Failed to update restaurant status')
     }
   }
 

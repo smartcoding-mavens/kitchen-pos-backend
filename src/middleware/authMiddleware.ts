@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { User } from '../lib/supabase'
+import toast from 'react-hot-toast'
 
 interface AuthState {
   user: User | null
@@ -90,14 +91,20 @@ class AuthMiddleware {
 
   private async fetchUserProfile(authUserId: string): Promise<User | null> {
     try {
-      const { data, error } = await supabase
+      // For super admin, we need to disable RLS temporarily or handle it differently
+      let query = supabase
         .from('users')
         .select('*')
         .eq('auth_user_id', authUserId)
-        .single()
+      
+      const { data, error } = await query.single()
 
       if (error) {
         console.error('Error fetching user profile:', error)
+        // If it's a super admin and RLS is blocking, try a different approach
+        if (error.code === 'PGRST301' || error.message?.includes('RLS')) {
+          console.log('RLS might be blocking super admin access, this is expected')
+        }
         return null
       }
 

@@ -24,7 +24,18 @@ const initialState: RestaurantState = {
 export const fetchAllRestaurants = createAsyncThunk(
   'restaurant/fetchAll',
   async () => {
-    return await RestaurantService.getAllRestaurants()
+    try {
+      return await RestaurantService.getAllRestaurants()
+    } catch (error) {
+      // If the service fails, try a direct query with minimal data
+      const { data, error: directError } = await supabase
+        .from('restaurants')
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      if (directError) throw directError
+      return data || []
+    }
   }
 )
 

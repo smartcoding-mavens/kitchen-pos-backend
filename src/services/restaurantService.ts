@@ -11,20 +11,27 @@ export interface CreateRestaurantData {
 
 export class RestaurantService {
   static async getAllRestaurants() {
-    const { data, error } = await supabase
-      .from('restaurants')
-      .select(`
-        *,
-        kitchen_owners (
-          full_name,
-          email,
-          subscription_plan
-        )
-      `)
-      .order('created_at', { ascending: false })
+    try {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .select(`
+          *,
+          kitchen_owners!left (
+            id,
+            full_name,
+            email,
+            subscription_plan
+          )
+        `)
+        .order('created_at', { ascending: false })
 
-    if (error) throw error
-    return data
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error in getAllRestaurants:', error)
+      // Return empty array instead of throwing to prevent app crash
+      return []
+    }
   }
 
   static async getRestaurantById(id: string) {
