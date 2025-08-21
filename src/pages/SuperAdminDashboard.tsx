@@ -179,6 +179,48 @@ export default function SuperAdminDashboard() {
     }
   }
 
+  const handleApproveAccount = async (ownerId: string) => {
+    try {
+      // Find the kitchen owner and their restaurant
+      const owner = kitchenOwners.find(o => o.id === ownerId)
+      if (!owner || !owner.restaurants?.[0]) {
+        toast.error('Restaurant not found')
+        return
+      }
+
+      const restaurantId = owner.restaurants[0].id
+
+      // Update restaurant status to active
+      const { error: restaurantError } = await supabase
+        .from('restaurants')
+        .update({ status: 'active' })
+        .eq('id', restaurantId)
+
+      if (restaurantError) throw restaurantError
+
+      // Update user status to active and set restaurant_id
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ 
+          is_active: true,
+          restaurant_id: restaurantId
+        })
+        .eq('email', owner.email)
+
+      if (userError) {
+        console.error('Error updating user status:', userError)
+        // Continue anyway as the restaurant is approved
+      }
+
+      toast.success('Account approved successfully! User can now access their dashboard.')
+      // Refresh data
+      fetchSuperAdminData()
+    } catch (error) {
+      console.error('Error approving account:', error)
+      toast.error('Failed to approve account')
+    }
+  }
+
   if (loading) {
     return (
       <Layout>
