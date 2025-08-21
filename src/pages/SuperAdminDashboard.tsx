@@ -413,14 +413,25 @@ export default function SuperAdminDashboard() {
                           )}
                         </td>
                         <td>
-                          <button
-                            onClick={() => handleProxyLogin(owner.id)}
-                            className="btn-sm btn-secondary"
-                            disabled={!owner.restaurants?.[0]}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleProxyLogin(owner.id)}
+                              className="btn-sm btn-secondary"
+                              disabled={!owner.restaurants?.[0]}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </button>
+                            {owner.restaurants?.[0] && (
+                              <button
+                                onClick={() => handleApproveAccount(owner.id)}
+                                className="btn-sm btn-primary"
+                                disabled={owner.restaurants[0].status === 'active'}
+                              >
+                                {owner.restaurants[0].status === 'active' ? 'Approved' : 'Approve'}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

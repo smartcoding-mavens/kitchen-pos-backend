@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Store, Eye, EyeOff } from 'lucide-react'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 
 export default function LoginPage() {
   const { user, signIn, loading } = useAuth()
+  const navigate = useNavigate()
   const location = useLocation()
   const [formData, setFormData] = useState({
     email: '',
@@ -139,6 +140,15 @@ export default function LoginPage() {
         <div className="text-center">
           <p className="text-xs text-gray-500">
             Kitchen POS Admin Panel - Secure Access Only
+          </p>
+          <p className="text-xs text-gray-500 mt-2">
+            New to Kitchen POS?{' '}
+            <button
+              onClick={() => navigate('/register')}
+              className="text-primary-600 hover:text-primary-500 font-medium"
+            >
+              Register here
+            </button>
           </p>
         </div>
       </div>

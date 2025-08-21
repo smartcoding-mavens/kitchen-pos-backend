@@ -53,6 +53,20 @@ class AuthMiddleware {
         // Fetch user profile from database
         const userProfile = await this.fetchUserProfile(session.user.id)
         if (userProfile) {
+          // Check if user is inactive (pending approval)
+          if (userProfile.role === 'kitchen_owner' && !userProfile.is_active) {
+            // Don't set as authenticated if pending approval
+            this.clearAuth()
+            return
+          }
+          
+          // Check if user is inactive (pending approval)
+          if (userProfile.role === 'kitchen_owner' && !userProfile.is_active) {
+            // Don't set as authenticated if pending approval
+            this.clearAuth()
+            return
+          }
+          
           this.setCachedUser(userProfile)
           this.updateAuthState({
             user: userProfile,
@@ -176,6 +190,11 @@ class AuthMiddleware {
       if (data.user) {
         const userProfile = await this.fetchUserProfile(data.user.id)
         if (userProfile) {
+         // Check if user is inactive (pending approval)
+         if (userProfile.role === 'kitchen_owner' && !userProfile.is_active) {
+           throw new Error('Your account is pending approval by a Super Admin. You will be notified once approved.')
+         }
+         
           this.setCachedUser(userProfile)
           this.updateAuthState({
             user: userProfile,
