@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import authMiddleware from '../middleware/authMiddleware'
 import LoadingSpinner from './LoadingSpinner'
+import toast from 'react-hot-toast'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -32,10 +33,12 @@ export function ProtectedRoute({
 
   // Check if user has required role
   if (requiredRole && !authMiddleware.hasRole(requiredRole)) {
+    toast.error('Access Denied')
     return <Navigate to="/dashboard" replace />
   }
 
   if (requiredRoles && !authMiddleware.hasAnyRole(requiredRoles)) {
+    toast.error('Access Denied')
     return <Navigate to="/dashboard" replace />
   }
 

@@ -17,6 +17,7 @@ import {
 import toast from 'react-hot-toast'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { format } from 'date-fns'
+import { SubscriptionService, SubscriptionPlan } from '../services/subscriptionService'
 
 interface SuperAdminStats {
   totalRevenue: number
@@ -34,10 +35,34 @@ export default function SuperAdminDashboard() {
   const [stats, setStats] = useState<SuperAdminStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [kitchenOwners, setKitchenOwners] = useState<any[]>([])
+  const [plan, setPlan] = useState<SubscriptionPlan | null>(null)
 
   useEffect(() => {
     fetchSuperAdminData()
   }, [dispatch])
+
+  useEffect(() => {
+    const loadPlan = async () => {
+      try {
+        const p = await SubscriptionService.getPlan()
+        setPlan(p)
+      } catch (e) {
+        // ignore
+      }
+    }
+    loadPlan()
+
+    const channel = supabase
+      .channel('subscription_plan_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'subscription_plan' }, () => {
+        SubscriptionService.getPlan().then(setPlan).catch(() => {})
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   const fetchSuperAdminData = async () => {
     try {
@@ -130,7 +155,7 @@ export default function SuperAdminDashboard() {
   const handleProxyLogin = async (ownerId: string) => {
     try {
       // In a real implementation, you would create a secure proxy login mechanism
-      toast.info('Proxy login feature would be implemented here')
+      toast('Proxy login feature would be implemented here')
     } catch (error) {
       toast.error('Failed to proxy login')
     }
@@ -195,6 +220,22 @@ export default function SuperAdminDashboard() {
                 </div>
                 <div className="p-3 bg-primary-100 rounded-full">
                   <DollarSign className="h-6 w-6 text-primary-600" />
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* Added: Subscription Plan */}
+          <div className="card hover-lift">
+            <div className="card-content">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Plan (Basic)</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {plan ? `${plan.currency} ${Number(plan.price).toFixed(2)}` : '—'}
+                  </p>
+                </div>
+                <div className="p-3 bg-primary-100 rounded-full">
+                  <Crown className="h-6 w-6 text-primary-600" />
                 </div>
               </div>
             </div>

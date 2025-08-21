@@ -47,6 +47,18 @@ export default function Layout({ children }: LayoutProps) {
       roles: ['kitchen_owner', 'manager', 'staff']
     },
     {
+      name: 'Super Admin',
+      href: '/super-admin',
+      icon: Crown,
+      roles: ['super_admin']
+    },
+    {
+      name: 'Subscription Settings',
+      href: '/super-admin/subscription',
+      icon: Settings,
+      roles: ['super_admin']
+    },
+    {
       name: 'Menu Management',
       href: '/menu',
       icon: Menu,

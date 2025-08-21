@@ -16,6 +16,7 @@ import CustomerManagement from './pages/CustomerManagement'
 import BarcodeManagement from './pages/BarcodeManagement'
 import BusinessHours from './pages/BusinessHours'
 import ReportsPage from './pages/ReportsPage'
+import SubscriptionSettings from './pages/SubscriptionSettings'
 
 function App() {
   return (
@@ -44,6 +45,14 @@ function App() {
             element={
               <ProtectedRoute requiredRole="super_admin">
                 <SuperAdminDashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/super-admin/subscription" 
+            element={
+              <ProtectedRoute requiredRole="super_admin">
+                <SubscriptionSettings />
               </ProtectedRoute>
             } 
           />
