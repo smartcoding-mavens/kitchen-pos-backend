@@ -122,6 +122,12 @@ class AuthMiddleware {
         return null
       }
 
+      // Additional check: if user is inactive and not a super admin, return null
+      if (data && !data.is_active && data.role !== 'super_admin') {
+        console.log('User account is inactive:', data.email)
+        return null
+      }
+
       return data
     } catch (error) {
       console.error('Exception in fetchUserProfile:', error)

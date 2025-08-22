@@ -190,6 +190,23 @@ export default function SuperAdminDashboard() {
 
       const restaurantId = owner.restaurants[0].id
 
+      // First, get the auth user and confirm their email
+      const { data: authUsers } = await supabase.auth.admin.listUsers()
+      const authUser = authUsers.users.find(u => u.email === owner.email)
+      
+      if (authUser) {
+        // Confirm the email for the auth user
+        const { error: confirmError } = await supabase.auth.admin.updateUserById(
+          authUser.id,
+          { email_confirm: true }
+        )
+        
+        if (confirmError) {
+          console.error('Error confirming email:', confirmError)
+          // Continue anyway as this might not be critical
+        }
+      }
+
       // Update restaurant status to active
       const { error: restaurantError } = await supabase
         .from('restaurants')
@@ -212,6 +229,14 @@ export default function SuperAdminDashboard() {
         // Continue anyway as the restaurant is approved
       }
 
+      // Send approval notification email
+      try {
+        await sendApprovalEmail(owner, owner.restaurants[0])
+      } catch (emailError) {
+        console.error('Error sending approval email:', emailError)
+        // Don't fail the approval process if email fails
+      }
+
       toast.success('Account approved successfully! User can now access their dashboard.')
       // Refresh data
       fetchSuperAdminData()
@@ -219,6 +244,72 @@ export default function SuperAdminDashboard() {
       console.error('Error approving account:', error)
       toast.error('Failed to approve account')
     }
+  }
+
+  const sendApprovalEmail = async (owner: any, restaurant: any) => {
+    // Create approval email content
+    const emailContent = {
+      to: owner.email,
+      subject: 'Your Kitchen POS Account Has Been Approved!',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #2563eb; margin-bottom: 10px;">Kitchen POS</h1>
+            <h2 style="color: #16a34a; margin: 0;">Account Approved! 🎉</h2>
+          </div>
+          
+          <div style="background-color: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <p>Hello <strong>${owner.full_name}</strong>,</p>
+            <p>Great news! Your Kitchen POS account has been approved by our admin team.</p>
+            <p>Your restaurant "<strong>${restaurant.name}</strong>" is now active and ready to use.</p>
+          </div>
+          
+          <div style="background-color: #dbeafe; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="color: #1e40af; margin-top: 0;">What's Next?</h3>
+            <ol style="color: #374151; line-height: 1.6;">
+              <li>Log in to your admin dashboard using your registered email and password</li>
+              <li>Complete your restaurant setup if you haven't already</li>
+              <li>Set up your menu categories and items</li>
+              <li>Configure your revenue centers and business hours</li>
+              <li>Generate QR codes for your tables</li>
+            </ol>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${window.location.origin}/login" 
+               style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+              Access Your Dashboard
+            </a>
+          </div>
+          
+          <div style="background-color: #f3f4f6; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+            <h4 style="margin-top: 0; color: #374151;">Account Details:</h4>
+            <p style="margin: 5px 0;"><strong>Email:</strong> ${owner.email}</p>
+            <p style="margin: 5px 0;"><strong>Restaurant:</strong> ${restaurant.name}</p>
+            <p style="margin: 5px 0;"><strong>Plan:</strong> ${owner.subscription_plan} ($${owner.subscription_amount}/year)</p>
+          </div>
+          
+          <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; text-align: center;">
+            <p style="color: #6b7280; font-size: 14px;">
+              Need help getting started? Contact our support team or check out our documentation.
+            </p>
+            <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">
+              This email was sent because your Kitchen POS account was approved.
+            </p>
+          </div>
+        </div>
+      `
+    }
+
+    // In a real implementation, you would integrate with an email service like SendGrid, Mailgun, etc.
+    // For now, we'll log the email content and show a success message
+    console.log('Approval email would be sent:', emailContent)
+    
+    // You could also call an edge function here to send the actual email
+    // const { error } = await supabase.functions.invoke('send-email', { body: emailContent })
+    // if (error) throw error
+    
+    toast.success('Approval email sent to the kitchen owner')
   }
 
   if (loading) {

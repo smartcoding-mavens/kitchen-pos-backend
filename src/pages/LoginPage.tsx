@@ -39,7 +39,18 @@ export default function LoginPage() {
       toast.success('Signed in successfully!')
     } catch (error) {
       console.error('Sign in error:', error)
-      toast.error((error as any).message || 'Failed to sign in')
+      const errorMessage = (error as any).message || 'Failed to sign in'
+      
+      // Provide more helpful error messages
+      if (errorMessage.includes('Email not confirmed')) {
+        toast.error('Your account is pending approval by an administrator. Please wait for approval notification.')
+      } else if (errorMessage.includes('pending approval')) {
+        toast.error('Your account is pending approval by a Super Admin. You will be notified once approved.')
+      } else if (errorMessage.includes('Invalid login credentials')) {
+        toast.error('Invalid email or password. Please check your credentials and try again.')
+      } else {
+        toast.error(errorMessage)
+      }
     } finally {
       setIsLoading(false)
     }
