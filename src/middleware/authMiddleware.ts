@@ -18,7 +18,10 @@ class AuthMiddleware {
   private listeners: Array<(state: AuthState) => void> = []
 
   private constructor() {
-    this.initializeAuth()
+    // Delay initialization to avoid hydration issues
+    if (typeof window !== 'undefined') {
+      setTimeout(() => this.initializeAuth(), 0)
+    }
   }
 
   public static getInstance(): AuthMiddleware {
@@ -30,15 +33,12 @@ class AuthMiddleware {
 
   private async initializeAuth(): Promise<void> {
     try {
-      // First check localStorage for cached user
-      const cachedUser = this.getCachedUser()
-      if (cachedUser) {
-        this.updateAuthState({
-          user: cachedUser,
-          isAuthenticated: true,
-          isLoading: false
-        })
-      }
+      // Set initial loading state
+      this.updateAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: true
+      })
 
       // Verify current session with Supabase
       const { data: { session }, error } = await supabase.auth.getSession()
@@ -50,23 +50,23 @@ class AuthMiddleware {
       }
 
       if (session?.user) {
+        // Check email verification first
+        if (!session.user.email_confirmed_at) {
+          console.log('User email not verified:', session.user.email)
+          this.clearAuth()
+          return
+        }
+
         // Fetch user profile from database
         const userProfile = await this.fetchUserProfile(session.user.id)
         if (userProfile) {
-          // Check if user is inactive (pending approval)
-          if (userProfile.role === 'kitchen_owner' && !userProfile.is_active) {
-            // Don't set as authenticated if pending approval
+          // Check account approval status (except for super admin)
+          if (userProfile.role !== 'super_admin' && !userProfile.is_active) {
+            console.log('User account not approved:', userProfile.email)
             this.clearAuth()
             return
           }
-          
-          // Check if user is inactive (pending approval)
-          if (userProfile.role === 'kitchen_owner' && !userProfile.is_active) {
-            // Don't set as authenticated if pending approval
-            this.clearAuth()
-            return
-          }
-          
+
           this.setCachedUser(userProfile)
           this.updateAuthState({
             user: userProfile,
@@ -82,9 +82,21 @@ class AuthMiddleware {
 
       // Set up auth state change listener
       supabase.auth.onAuthStateChange(async (event, session) => {
-        if (session?.user) {
+        if (event === 'SIGNED_IN' && session?.user) {
+          // Check email verification
+          if (!session.user.email_confirmed_at) {
+            this.clearAuth()
+            return
+          }
+
           const userProfile = await this.fetchUserProfile(session.user.id)
           if (userProfile) {
+            // Check account approval status (except for super admin)
+            if (userProfile.role !== 'super_admin' && !userProfile.is_active) {
+              this.clearAuth()
+              return
+            }
+
             this.setCachedUser(userProfile)
             this.updateAuthState({
               user: userProfile,
@@ -92,7 +104,7 @@ class AuthMiddleware {
               isLoading: false
             })
           }
-        } else {
+        } else if (event === 'SIGNED_OUT') {
           this.clearAuth()
         }
       })
@@ -105,7 +117,6 @@ class AuthMiddleware {
 
   private async fetchUserProfile(authUserId: string): Promise<User | null> {
     try {
-      // For super admin, we need to disable RLS temporarily or handle it differently
       let query = supabase
         .from('users')
         .select('*')
@@ -115,18 +126,9 @@ class AuthMiddleware {
 
       if (error) {
         console.error('Error fetching user profile:', error)
-        // If it's a super admin and RLS is blocking, try a different approach
-        if (error.code === 'PGRST301' || error.message?.includes('RLS')) {
-          console.log('RLS might be blocking super admin access, this is expected')
-        }
         return null
       }
 
-      // Additional check: if user is inactive and not a super admin, return null
-      if (data && !data.is_active && data.role !== 'super_admin') {
-        console.log('User account is inactive:', data.email)
-        return null
-      }
 
       return data
     } catch (error) {
@@ -186,6 +188,49 @@ class AuthMiddleware {
 
   public async signIn(email: string, password: string): Promise<void> {
     try {
+      // First, get the auth user to check email verification
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (authError) throw authError
+
+      // Check if email is verified
+      if (!authData.user?.email_confirmed_at) {
+        await supabase.auth.signOut()
+        throw new Error('Please verify your email address before signing in. Check your inbox for a verification email.')
+      }
+
+      // Fetch user profile from database
+      const userProfile = await this.fetchUserProfile(authData.user.id)
+      if (!userProfile) {
+        await supabase.auth.signOut()
+        throw new Error('User profile not found. Please contact support.')
+      }
+
+      // Check account approval status (except for super admin)
+      if (userProfile.role !== 'super_admin' && !userProfile.is_active) {
+        await supabase.auth.signOut()
+        throw new Error('Your account is pending approval by a Super Admin. You will be notified once approved.')
+      }
+
+      // All checks passed, set user as authenticated
+      this.setCachedUser(userProfile)
+      this.updateAuthState({
+        user: userProfile,
+        isAuthenticated: true,
+        isLoading: false
+      })
+
+    } catch (error) {
+      this.clearAuth()
+      throw error
+    }
+  }
+
+  public async signInOld(email: string, password: string): Promise<void> {
+    try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -196,11 +241,6 @@ class AuthMiddleware {
       if (data.user) {
         const userProfile = await this.fetchUserProfile(data.user.id)
         if (userProfile) {
-         // Check if user is inactive (pending approval)
-         if (userProfile.role === 'kitchen_owner' && !userProfile.is_active) {
-           throw new Error('Your account is pending approval by a Super Admin. You will be notified once approved.')
-         }
-         
           this.setCachedUser(userProfile)
           this.updateAuthState({
             user: userProfile,

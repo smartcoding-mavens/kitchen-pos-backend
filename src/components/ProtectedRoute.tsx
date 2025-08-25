@@ -2,6 +2,7 @@ import React from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import authMiddleware from '../middleware/authMiddleware'
+import { supabase } from '../lib/supabase'
 import LoadingSpinner from './LoadingSpinner'
 import toast from 'react-hot-toast'
 
@@ -29,6 +30,25 @@ export function ProtectedRoute({
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  // Check email verification for all users except super admin
+  if (user.role !== 'super_admin') {
+    // Get auth user to check email verification
+    const checkEmailVerification = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (authUser && !authUser.email_confirmed_at) {
+        toast.error('Please verify your email address')
+        return <Navigate to="/login" replace />
+      }
+    }
+    checkEmailVerification()
+  }
+
+  // Check account approval status (except for super admin)
+  if (user.role !== 'super_admin' && !user.is_active) {
+    toast.error('Your account is pending approval')
+    return <Navigate to="/login" replace />
   }
 
   // Check if user has required role

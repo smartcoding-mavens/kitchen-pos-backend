@@ -13,8 +13,11 @@ interface UseAuthReturn {
 
 export function useAuth(): UseAuthReturn {
   const [authState, setAuthState] = useState(() => authMiddleware.getAuthState())
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
+    
     // Subscribe to auth state changes
     const unsubscribe = authMiddleware.subscribe((state) => {
       setAuthState(state)
@@ -23,6 +26,17 @@ export function useAuth(): UseAuthReturn {
     return unsubscribe
   }, [])
 
+  // Prevent hydration issues by ensuring component is mounted
+  if (!mounted) {
+    return {
+      user: null,
+      loading: true,
+      isAuthenticated: false,
+      signIn: async () => {},
+      signOut: async () => {},
+      refreshUser: async () => {},
+    }
+  }
   const signIn = async (email: string, password: string) => {
     await authMiddleware.signIn(email, password)
   }

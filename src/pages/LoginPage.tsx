@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import authMiddleware from '../middleware/authMiddleware'
 import { Store, Eye, EyeOff } from 'lucide-react'
 import LoadingSpinner from '../components/LoadingSpinner'
 import toast from 'react-hot-toast'
@@ -37,13 +38,22 @@ export default function LoginPage() {
     try {
       await signIn(formData.email, formData.password)
       toast.success('Signed in successfully!')
+      
+      // Get the current user to determine redirect
+      const { user: currentUser } = authMiddleware.getAuthState()
+      
+      if (currentUser?.role === 'super_admin') {
+        navigate('/super-admin', { replace: true })
+      } else {
+        navigate(from, { replace: true })
+      }
     } catch (error) {
       console.error('Sign in error:', error)
       const errorMessage = (error as any).message || 'Failed to sign in'
       
       // Provide more helpful error messages
-      if (errorMessage.includes('Email not confirmed')) {
-        toast.error('Your account is pending approval by an administrator. Please wait for approval notification.')
+      if (errorMessage.includes('verify your email')) {
+        toast.error('Please verify your email address before signing in. Check your inbox for a verification email.')
       } else if (errorMessage.includes('pending approval')) {
         toast.error('Your account is pending approval by a Super Admin. You will be notified once approved.')
       } else if (errorMessage.includes('Invalid login credentials')) {
