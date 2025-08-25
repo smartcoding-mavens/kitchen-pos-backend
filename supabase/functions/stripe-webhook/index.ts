@@ -1,8 +1,22 @@
+import Stripe from 'npm:stripe@14.10.0'
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import { corsHeaders } from '../_shared/cors.ts'
 
-const stripe = Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '')
-const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET') || ''
+const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')
+const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')
+
+if (!stripeSecretKey) {
+  throw new Error('STRIPE_SECRET_KEY environment variable is not set')
+}
+
+if (!webhookSecret) {
+  throw new Error('STRIPE_WEBHOOK_SECRET environment variable is not set')
+}
+
+const stripe = new Stripe(stripeSecretKey, {
+  apiVersion: '2023-10-16',
+  typescript: true,
+})
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -112,7 +126,10 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Webhook error:', error)
     return new Response(
-      JSON.stringify({ error: 'Webhook handler failed' }),
+      JSON.stringify({ 
+        error: 'Webhook handler failed',
+        details: error.message 
+      }),
       {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

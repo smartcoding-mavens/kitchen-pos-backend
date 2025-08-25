@@ -112,23 +112,12 @@ export default function RegisterPage() {
     setLoading(true)
     try {
       // Check if email already exists
-      const { data: existingUser } = await supabase
+      const { data: existingUsers } = await supabase
         .from('kitchen_owners')
         .select('id')
         .eq('email', formData.email)
-        .single()
 
-      if (existingUser) {
-        setErrors({ email: 'An account with this email already exists' })
-        setLoading(false)
-        return
-      }
-
-      // Also check in auth.users
-      const { data: authUsers } = await supabase.auth.admin.listUsers()
-      const emailExists = authUsers.users.some(user => user.email === formData.email)
-
-      if (emailExists) {
+      if (existingUsers && existingUsers.length > 0) {
         setErrors({ email: 'An account with this email already exists' })
         setLoading(false)
         return

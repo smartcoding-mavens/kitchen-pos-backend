@@ -1,6 +1,16 @@
+import Stripe from 'npm:stripe@14.10.0'
 import { corsHeaders } from '../_shared/cors.ts'
 
-const stripe = Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '')
+const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')
+
+if (!stripeSecretKey) {
+  throw new Error('STRIPE_SECRET_KEY environment variable is not set')
+}
+
+const stripe = new Stripe(stripeSecretKey, {
+  apiVersion: '2023-10-16',
+  typescript: true,
+})
 
 interface CreateCheckoutSessionRequest {
   plan_id: string
@@ -80,7 +90,10 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Checkout session creation error:', error)
     return new Response(
-      JSON.stringify({ error: 'Failed to create checkout session' }),
+      JSON.stringify({ 
+        error: 'Failed to create checkout session',
+        details: error.message 
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
