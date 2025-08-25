@@ -20,6 +20,25 @@ export function ProtectedRoute({
   const { user, loading } = useAuth()
   const location = useLocation()
 
+  // Add a maximum loading time to prevent infinite loading
+  const [maxLoadingReached, setMaxLoadingReached] = React.useState(false)
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loading) {
+        setMaxLoadingReached(true)
+      }
+    }, 10000) // 10 second timeout
+
+    return () => clearTimeout(timer)
+  }, [loading])
+
+  // If loading for too long, redirect to login
+  if (maxLoadingReached && loading) {
+    toast.error('Authentication timeout. Please try logging in again.')
+    return <Navigate to="/login" replace />
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -34,15 +53,8 @@ export function ProtectedRoute({
 
   // Check email verification for all users except super admin
   if (user.role !== 'super_admin') {
-    // Get auth user to check email verification
-    const checkEmailVerification = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser()
-      if (authUser && !authUser.email_confirmed_at) {
-        toast.error('Please verify your email address')
-        return <Navigate to="/login" replace />
-      }
-    }
-    checkEmailVerification()
+    // Email verification is already checked in auth middleware
+    // No need to check again here to avoid async issues
   }
 
   // Check account approval status (except for super admin)

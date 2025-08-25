@@ -16,12 +16,12 @@ class AuthMiddleware {
     isLoading: true
   }
   private listeners: Array<(state: AuthState) => void> = []
+  private initialized = false
+  private initPromise: Promise<void> | null = null
 
   private constructor() {
-    // Delay initialization to avoid hydration issues
-    if (typeof window !== 'undefined') {
-      setTimeout(() => this.initializeAuth(), 0)
-    }
+    // Initialize immediately but safely
+    this.initializeAuth()
   }
 
   public static getInstance(): AuthMiddleware {
@@ -32,17 +32,41 @@ class AuthMiddleware {
   }
 
   private async initializeAuth(): Promise<void> {
+    // Prevent multiple initializations
+    if (this.initPromise) {
+      return this.initPromise
+    }
+
+    this.initPromise = this.performInitialization()
+    return this.initPromise
+  }
+
+  private async performInitialization(): Promise<void> {
     try {
-      // Set initial loading state
+      // Ensure we're in browser environment
+      if (typeof window === 'undefined') {
+        this.clearAuth()
+        return
+      }
+
+      // Set loading state immediately
       this.updateAuthState({
         user: null,
         isAuthenticated: false,
         isLoading: true
       })
 
-      // Verify current session with Supabase
-      const { data: { session }, error } = await supabase.auth.getSession()
-      
+      // Get current session with timeout
+      const sessionPromise = supabase.auth.getSession()
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Session timeout')), 5000)
+      )
+
+      const { data: { session }, error } = await Promise.race([
+        sessionPromise,
+        timeoutPromise
+      ]) as any
+
       if (error) {
         console.error('Error getting session:', error)
         this.clearAuth()
@@ -57,8 +81,8 @@ class AuthMiddleware {
           return
         }
 
-        // Fetch user profile from database
-        const userProfile = await this.fetchUserProfile(session.user.id)
+        // Fetch user profile with timeout
+        const userProfile = await this.fetchUserProfileWithTimeout(session.user.id)
         if (userProfile) {
           // Check account approval status (except for super admin)
           if (userProfile.role !== 'super_admin' && !userProfile.is_active) {
@@ -80,8 +104,21 @@ class AuthMiddleware {
         this.clearAuth()
       }
 
-      // Set up auth state change listener
-      supabase.auth.onAuthStateChange(async (event, session) => {
+      // Set up auth state change listener only once
+      if (!this.initialized) {
+        this.setupAuthListener()
+        this.initialized = true
+      }
+
+    } catch (error) {
+      console.error('Error initializing auth:', error)
+      this.clearAuth()
+    }
+  }
+
+  private setupAuthListener(): void {
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      try {
         if (event === 'SIGNED_IN' && session?.user) {
           // Check email verification
           if (!session.user.email_confirmed_at) {
@@ -89,7 +126,7 @@ class AuthMiddleware {
             return
           }
 
-          const userProfile = await this.fetchUserProfile(session.user.id)
+          const userProfile = await this.fetchUserProfileWithTimeout(session.user.id)
           if (userProfile) {
             // Check account approval status (except for super admin)
             if (userProfile.role !== 'super_admin' && !userProfile.is_active) {
@@ -103,32 +140,45 @@ class AuthMiddleware {
               isAuthenticated: true,
               isLoading: false
             })
+          } else {
+            this.clearAuth()
           }
         } else if (event === 'SIGNED_OUT') {
           this.clearAuth()
         }
-      })
+      } catch (error) {
+        console.error('Auth state change error:', error)
+        this.clearAuth()
+      }
+    })
+  }
 
+  private async fetchUserProfileWithTimeout(authUserId: string): Promise<User | null> {
+    try {
+      const profilePromise = this.fetchUserProfile(authUserId)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 3000)
+      )
+
+      return await Promise.race([profilePromise, timeoutPromise]) as User | null
     } catch (error) {
-      console.error('Error initializing auth:', error)
-      this.clearAuth()
+      console.error('Error fetching user profile with timeout:', error)
+      return null
     }
   }
 
   private async fetchUserProfile(authUserId: string): Promise<User | null> {
     try {
-      let query = supabase
+      const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('auth_user_id', authUserId)
-      
-      const { data, error } = await query.single()
+        .single()
 
       if (error) {
         console.error('Error fetching user profile:', error)
         return null
       }
-
 
       return data
     } catch (error) {
@@ -139,6 +189,7 @@ class AuthMiddleware {
 
   private getCachedUser(): User | null {
     try {
+      if (typeof window === 'undefined') return null
       const cachedUser = localStorage.getItem('user')
       return cachedUser ? JSON.parse(cachedUser) : null
     } catch (error) {
@@ -149,14 +200,23 @@ class AuthMiddleware {
 
   private setCachedUser(user: User): void {
     try {
-      localStorage.setItem('user', JSON.stringify(user))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(user))
+      }
     } catch (error) {
       console.error('Error caching user:', error)
     }
   }
 
   private clearAuth(): void {
-    localStorage.removeItem('user')
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('user')
+      }
+    } catch (error) {
+      console.error('Error clearing auth cache:', error)
+    }
+    
     this.updateAuthState({
       user: null,
       isAuthenticated: false,
@@ -170,7 +230,16 @@ class AuthMiddleware {
   }
 
   private notifyListeners(): void {
-    this.listeners.forEach(listener => listener(this.authState))
+    // Use setTimeout to prevent synchronous state updates that can cause issues
+    setTimeout(() => {
+      this.listeners.forEach(listener => {
+        try {
+          listener(this.authState)
+        } catch (error) {
+          console.error('Error in auth listener:', error)
+        }
+      })
+    }, 0)
   }
 
   // Public methods
@@ -188,6 +257,13 @@ class AuthMiddleware {
 
   public async signIn(email: string, password: string): Promise<void> {
     try {
+      // Set loading state
+      this.updateAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: true
+      })
+
       // First, get the auth user to check email verification
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -203,7 +279,7 @@ class AuthMiddleware {
       }
 
       // Fetch user profile from database
-      const userProfile = await this.fetchUserProfile(authData.user.id)
+      const userProfile = await this.fetchUserProfileWithTimeout(authData.user.id)
       if (!userProfile) {
         await supabase.auth.signOut()
         throw new Error('User profile not found. Please contact support.')
@@ -229,34 +305,6 @@ class AuthMiddleware {
     }
   }
 
-  public async signInOld(email: string, password: string): Promise<void> {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) throw error
-
-      if (data.user) {
-        const userProfile = await this.fetchUserProfile(data.user.id)
-        if (userProfile) {
-          this.setCachedUser(userProfile)
-          this.updateAuthState({
-            user: userProfile,
-            isAuthenticated: true,
-            isLoading: false
-          })
-        } else {
-          throw new Error('User profile not found')
-        }
-      }
-    } catch (error) {
-      this.clearAuth()
-      throw error
-    }
-  }
-
   public async signOut(): Promise<void> {
     try {
       const { error } = await supabase.auth.signOut()
@@ -267,27 +315,41 @@ class AuthMiddleware {
   }
 
   public async refreshUser(): Promise<void> {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.user) {
-      const userProfile = await this.fetchUserProfile(session.user.id)
-      if (userProfile) {
-        this.setCachedUser(userProfile)
-        this.updateAuthState({
-          user: userProfile,
-          isAuthenticated: true,
-          isLoading: false
-        })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        const userProfile = await this.fetchUserProfileWithTimeout(session.user.id)
+        if (userProfile) {
+          this.setCachedUser(userProfile)
+          this.updateAuthState({
+            user: userProfile,
+            isAuthenticated: true,
+            isLoading: false
+          })
+        } else {
+          this.clearAuth()
+        }
+      } else {
+        this.clearAuth()
       }
+    } catch (error) {
+      console.error('Error refreshing user:', error)
+      this.clearAuth()
     }
   }
 
   // Middleware function for API requests
   public async verifyAuth(): Promise<boolean> {
     if (this.authState.isLoading) {
-      // Wait for auth to initialize
+      // Wait for auth to initialize with timeout
       return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve(false)
+        }, 5000)
+
         const unsubscribe = this.subscribe((state) => {
           if (!state.isLoading) {
+            clearTimeout(timeout)
             unsubscribe()
             resolve(state.isAuthenticated)
           }

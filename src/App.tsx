@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import LoadingSpinner from './components/LoadingSpinner'
 
 // Pages
 import LoginPage from './pages/LoginPage'
@@ -20,6 +21,25 @@ import ReportsPage from './pages/ReportsPage'
 import SubscriptionSettings from './pages/SubscriptionSettings'
 
 function App() {
+  const [appLoading, setAppLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    // Ensure app is fully loaded before showing content
+    const timer = setTimeout(() => {
+      setAppLoading(false)
+    }, 100)
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  if (appLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
+
   return (
     <AuthProvider>
       <div className="App">

@@ -16,17 +16,32 @@ export function useAuth(): UseAuthReturn {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    let isMounted = true
+    
+    // Set mounted flag
     setMounted(true)
+    
+    // Get initial auth state
+    const initialState = authMiddleware.getAuthState()
+    if (isMounted) {
+      setAuthState(initialState)
+    }
     
     // Subscribe to auth state changes
     const unsubscribe = authMiddleware.subscribe((state) => {
-      setAuthState(state)
+      if (isMounted) {
+        setAuthState(state)
+      }
     })
 
-    return unsubscribe
+    // Cleanup function
+    return () => {
+      isMounted = false
+      unsubscribe()
+    }
   }, [])
 
-  // Prevent hydration issues by ensuring component is mounted
+  // Return loading state until component is mounted to prevent hydration issues
   if (!mounted) {
     return {
       user: null,
@@ -37,6 +52,7 @@ export function useAuth(): UseAuthReturn {
       refreshUser: async () => {},
     }
   }
+
   const signIn = async (email: string, password: string) => {
     await authMiddleware.signIn(email, password)
   }

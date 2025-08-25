@@ -39,14 +39,18 @@ export default function LoginPage() {
       await signIn(formData.email, formData.password)
       toast.success('Signed in successfully!')
       
-      // Get the current user to determine redirect
-      const { user: currentUser } = authMiddleware.getAuthState()
+      // Small delay to ensure auth state is updated
+      setTimeout(() => {
+        // Get the current user to determine redirect
+        const { user: currentUser } = authMiddleware.getAuthState()
+        
+        if (currentUser?.role === 'super_admin') {
+          navigate('/super-admin', { replace: true })
+        } else {
+          navigate(from, { replace: true })
+        }
+      }, 100)
       
-      if (currentUser?.role === 'super_admin') {
-        navigate('/super-admin', { replace: true })
-      } else {
-        navigate(from, { replace: true })
-      }
     } catch (error) {
       console.error('Sign in error:', error)
       const errorMessage = (error as any).message || 'Failed to sign in'
