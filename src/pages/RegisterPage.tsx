@@ -3,11 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Store, Check, ArrowRight, ArrowLeft, Mail, Lock, User, MapPin, Building, CreditCard, DollarSign } from 'lucide-react'
 import LoadingSpinner from '../components/LoadingSpinner'
-import { PaymentIntegrationService } from '../services/paymentIntegrationService'
-import { loadStripe } from '@stripe/stripe-js'
 import toast from 'react-hot-toast'
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
+import { SubscriptionService } from '../services/subscriptionService'
 
 interface RegistrationData {
   fullName: string
@@ -16,15 +13,6 @@ interface RegistrationData {
   confirmPassword: string
   restaurantName: string
   address: string
-}
-
-interface SubscriptionPlan {
-  id: string
-  name: string
-  description?: string
-  price: number
-  currency: string
-  billing_cycle: string
 }
 
 interface ValidationErrors {
@@ -40,7 +28,8 @@ export default function RegisterPage() {
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
-  const [plan, setPlan] = useState<SubscriptionPlan | null>(null)
+  const [plan, setPlan] = useState<any>(null)
+  const [planLoading, setPlanLoading] = useState(true)
   const [kitchenOwnerId, setKitchenOwnerId] = useState<string | null>(null)
   const [processingPayment, setProcessingPayment] = useState(false)
   const [formData, setFormData] = useState<RegistrationData>({
@@ -57,11 +46,15 @@ export default function RegisterPage() {
   React.useEffect(() => {
     const loadPlan = async () => {
       try {
-        const subscriptionPlan = await PaymentIntegrationService.getSubscriptionPlan()
+        setPlanLoading(true)
+        const subscriptionPlan = await SubscriptionService.getPlan()
         setPlan(subscriptionPlan)
+        console.log('Loaded subscription plan:', subscriptionPlan)
       } catch (error) {
         console.error('Error loading subscription plan:', error)
         toast.error('Failed to load subscription plan')
+      } finally {
+        setPlanLoading(false)
       }
     }
     loadPlan()
@@ -182,7 +175,7 @@ export default function RegisterPage() {
         .insert({
           email: formData.email,
           full_name: formData.fullName,
-          subscription_plan: plan?.name || 'basic',
+          subscription_plan: plan?.name || 'Basic',
           payment_id: `pending_${Date.now()}`, // Will be updated after payment
           subscription_amount: plan?.price || 99.99,
           subscription_expires_at: subscriptionExpiresAt.toISOString(), // Will be updated after payment
@@ -237,6 +230,83 @@ export default function RegisterPage() {
   }
 
   const handlePayment = async () => {
+    if (!plan || !kitchenOwnerId) {
+      toast.error('Missing plan or kitchen owner information')
+      return
+    }
+
+    setProcessingPayment(true)
+
+    try {
+      const successUrl = `${window.location.origin}/register?step=4&session_id={CHECKOUT_SESSION_ID}`
+      const cancelUrl = `${window.location.origin}/register?step=3&cancelled=true`
+
+      // Create Stripe checkout session
+      const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+        body: {
+          plan_id: plan.id,
+          amount: Math.round(plan.price * 100), // Convert to cents
+          currency: plan.currency.toLowerCase(),
+          kitchen_owner_id: kitchenOwnerId,
+          restaurant_name: formData.restaurantName,
+          success_url: successUrl,
+          cancel_url: cancelUrl
+        }
+      })
+
+      if (error) throw error
+
+      const { session_id, url } = data
+
+      if (url) {
+        // Redirect to Stripe Checkout
+        window.location.href = url
+      } else {
+        throw new Error('No checkout URL received')
+      }
+    } catch (error: any) {
+      console.error('Payment error:', error)
+      toast.error(error.message || 'Payment processing failed. Please try again.')
+      setProcessingPayment(false)
+    }
+  }
+
+  const handlePaymentWithElements = async () => {
+    if (!plan || !kitchenOwnerId) {
+      toast.error('Missing plan or kitchen owner information')
+      return
+    }
+
+    setProcessingPayment(true)
+
+    try {
+      // Alternative: Use Payment Elements (if you prefer embedded payment form)
+      const { data, error } = await supabase.functions.invoke('create-payment-intent', {
+        body: {
+          amount: Math.round(plan.price * 100), // Convert to cents
+          currency: plan.currency.toLowerCase(),
+          metadata: {
+            kitchen_owner_id: kitchenOwnerId,
+            plan_id: plan.id,
+            restaurant_name: formData.restaurantName
+          }
+        }
+      })
+
+      if (error) throw error
+
+      // Here you would integrate with Stripe Elements
+      // For now, we'll use the checkout flow above
+      console.log('Payment intent created:', data)
+      
+    } catch (error: any) {
+      console.error('Payment error:', error)
+      toast.error(error.message || 'Payment processing failed. Please try again.')
+      setProcessingPayment(false)
+    }
+  }
+
+  const oldHandlePayment = async () => {
     if (!plan || !kitchenOwnerId) {
       toast.error('Missing plan or kitchen owner information')
       return
@@ -532,7 +602,12 @@ export default function RegisterPage() {
         <p className="text-gray-600">Secure your Kitchen POS subscription</p>
       </div>
 
-      {plan && (
+      {planLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <LoadingSpinner size="md" />
+          <span className="ml-2 text-gray-600">Loading plan details...</span>
+        </div>
+      ) : plan ? (
         <div className="card">
           <div className="card-content">
             <div className="flex items-center justify-between mb-4">
@@ -548,9 +623,9 @@ export default function RegisterPage() {
               <div className="text-right">
                 <div className="flex items-center gap-1">
                   <DollarSign className="h-5 w-5 text-gray-400" />
-                  <span className="text-2xl font-bold text-gray-900">{plan.price}</span>
+                  <span className="text-2xl font-bold text-gray-900">{Number(plan.price).toFixed(2)}</span>
                 </div>
-                <p className="text-sm text-gray-600">per {plan.billing_cycle.replace('ly', '')}</p>
+                <p className="text-sm text-gray-600">per {plan.billing_cycle}</p>
               </div>
             </div>
 
@@ -563,12 +638,26 @@ export default function RegisterPage() {
             <div className="border-t border-gray-200 pt-4">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-gray-600">Subtotal</span>
-                <span className="font-medium">${plan.price}</span>
+                <span className="font-medium">${Number(plan.price).toFixed(2)}</span>
               </div>
               <div className="flex justify-between items-center mb-4">
                 <span className="text-lg font-semibold text-gray-900">Total</span>
-                <span className="text-lg font-bold text-gray-900">${plan.price} {plan.currency.toUpperCase()}</span>
+                <span className="text-lg font-bold text-gray-900">${Number(plan.price).toFixed(2)} {plan.currency.toUpperCase()}</span>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="card-content">
+            <div className="text-center py-8">
+              <p className="text-red-600 mb-4">Unable to load subscription plan</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="btn-secondary btn-sm"
+              >
+                Retry
+              </button>
             </div>
           </div>
         </div>
@@ -603,7 +692,7 @@ export default function RegisterPage() {
         </button>
         <button
           onClick={handlePayment}
-          disabled={processingPayment || !plan}
+          disabled={processingPayment || !plan || planLoading}
           className="btn-primary btn-lg flex-1"
         >
           {processingPayment ? (
@@ -614,7 +703,7 @@ export default function RegisterPage() {
           ) : (
             <div className="flex items-center justify-center gap-2">
               <CreditCard className="h-4 w-4" />
-              <span>Pay ${plan?.price || 0}</span>
+              <span>Pay ${plan ? Number(plan.price).toFixed(2) : '0.00'}</span>
             </div>
           )}
         </button>
@@ -633,7 +722,7 @@ export default function RegisterPage() {
       <div>
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Registration Successful!</h2>
         <p className="text-gray-600 mb-4">
-          Your payment has been processed successfully and your subscription is now active! 
+          Your payment has been processed successfully and your subscription is now active!
           Your account will require approval from a Super Admin before you can access the Dashboard.
         </p>
         <p className="text-sm text-gray-500 mb-6">
@@ -652,7 +741,7 @@ export default function RegisterPage() {
             <h4 className="text-sm font-medium text-yellow-900 mb-1">Pending Approval</h4>
             <p className="text-sm text-yellow-700">
               Your account is pending approval by a Super Admin. You will be notified via email 
-              once your account is approved and you can access your dashboard. Your subscription is already active.
+              once your account is approved and you can access your dashboard.
             </p>
           </div>
         </div>
