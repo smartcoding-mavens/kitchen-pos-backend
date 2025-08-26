@@ -106,3 +106,21 @@ export interface Customer {
   created_at: string
   updated_at: string
 }
+
+export interface GolfClub {
+  id: string
+  kitchen_owner_id: string
+  name: string
+  description?: string
+  address: string
+  email: string
+  phone_number: string
+  city: string
+  state: string
+  country: string
+  zipcode: number
+  status: 'active' | 'inactive'
+  location?: string
+  created_at: string
+  updated_at: string
+}

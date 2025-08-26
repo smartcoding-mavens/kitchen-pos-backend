@@ -16,6 +16,7 @@ import {
   Settings,
   Store,
   Crown
+  Flag
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -99,6 +100,12 @@ export default function Layout({ children }: LayoutProps) {
       href: '/reports',
       icon: BarChart3,
       roles: ['kitchen_owner', 'manager']
+    },
+    {
+      name: 'Golf Clubs',
+      href: '/golf-clubs',
+      icon: Flag,
+      roles: ['kitchen_owner']
     }
   ]
 

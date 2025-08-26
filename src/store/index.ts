@@ -8,6 +8,7 @@ import customerSlice from './slices/customerSlice'
 import barcodeSlice from './slices/barcodeSlice'
 import businessHoursSlice from './slices/businessHoursSlice'
 import reportSlice from './slices/reportSlice'
+import golfClubSlice from './slices/golfClubSlice'
 
 export const store = configureStore({
   reducer: {
@@ -20,6 +21,7 @@ export const store = configureStore({
     barcode: barcodeSlice,
     businessHours: businessHoursSlice,
     report: reportSlice,
+    golfClub: golfClubSlice,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

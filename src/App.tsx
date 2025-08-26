@@ -19,6 +19,7 @@ import BarcodeManagement from './pages/BarcodeManagement'
 import BusinessHours from './pages/BusinessHours'
 import ReportsPage from './pages/ReportsPage'
 import SubscriptionSettings from './pages/SubscriptionSettings'
+import GolfClubManagement from './pages/GolfClubManagement'
 
 function App() {
   const [appLoading, setAppLoading] = React.useState(true)
@@ -131,6 +132,14 @@ function App() {
             element={
               <ProtectedRoute requiredRoles={['kitchen_owner', 'manager']}>
                 <ReportsPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/golf-clubs" 
+            element={
+              <ProtectedRoute requiredRole="kitchen_owner">
+                <GolfClubManagement />
               </ProtectedRoute>
             } 
           />

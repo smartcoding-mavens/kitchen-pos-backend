@@ -11,6 +11,7 @@ export { BarcodeService } from './barcodeService'
 export { PaymentService } from './paymentService'
 export { BusinessHoursService } from './businessHoursService'
 export { ReportService } from './reportService'
+export { GolfClubService } from './golfClubService'
 
 // Service types
 export type {
@@ -66,3 +67,9 @@ export type {
   ReportFilters,
   SalesReport,
 } from './reportService'
+
+export type {
+  GolfClub,
+  CreateGolfClubData,
+  GolfClubFilters,
+} from './golfClubService'
