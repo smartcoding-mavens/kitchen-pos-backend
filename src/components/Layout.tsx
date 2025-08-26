@@ -15,7 +15,7 @@ import {
   ChevronRight,
   Settings,
   Store,
-  Crown
+  Crown,
   Flag
 } from 'lucide-react'
 import toast from 'react-hot-toast'
